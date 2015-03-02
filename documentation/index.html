@@ -41,8 +41,8 @@
                 <li><a href="/">About</a></li>
                 <li><a href="/documentation/">Documentation</a></li>
                 <li><a href="/faq/">FAQ</a></li>
+                <li><a href="/media/">Media</a></li>
                 <li><a href="/projects/">Related projects</a></li>
-                <li><a href="/presentations/">Presentations</a></li>
                 <!--<li class="dropdown">-->
                 <!--<a id="drop1" href="/documentation" class="dropdown-toggle" data-toggle="dropdown"-->
                 <!--aria-haspopup="true" role="button" aria-expanded="false">-->
@@ -198,7 +198,7 @@ needed configuration.</li>
 <li>  <del>Actions composition</del></li>
 <li>  <del>subscribe/plugins</del></li>
 <li>  <del>Suspending</del></li>
-<li>  Polling action</li>
+<li>  <del>Polling action</del></li>
 <li>  Console</li>
 <li>  Testing</li>
 <li>  Error handling
@@ -444,7 +444,7 @@ just by including the module.</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">AnAction</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
   <span class="kp">include</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span><span class="o">::</span><span class="no">Polling</span>
 </code></pre></div>
-<p>3 methods need to be always implemented: <code>done?</code>, <code>invoke_external_task</code>, <code>poll_external_task</code>.</p>
+<p>There are 3 methods need to be always implemented:</p>
 
 <ul>
 <li>  <code>done?</code> - determines when the task is complete based on external task&#39;s data.</li>
@@ -453,18 +453,59 @@ just by including the module.</p>
 (JSON serializable data like: <code>Hash</code>, <code>Array</code>, <code>String</code>, etc.) which are stored in action&#39;s
 output.</li>
 </ul>
-
-<p><em>TODO finish example and <code>external_task</code>, <code>external_task=</code> methods description</em></p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby">  <span class="k">def</span> <span class="nf">done?</span>
+    <span class="n">external_task</span><span class="o">[</span><span class="ss">:progress</span><span class="o">]</span> <span class="o">==</span> <span class="mi">1</span>
   <span class="k">end</span>
 
   <span class="k">def</span> <span class="nf">invoke_external_task</span>
+    <span class="n">triger_the_task_with_rest_call</span>  
   <span class="k">end</span>
 
   <span class="k">def</span> <span class="nf">poll_external_task</span>
+    <span class="n">data</span>     <span class="o">=</span> <span class="n">poll_data_with_rest_call</span>
+    <span class="n">progress</span> <span class="o">=</span> <span class="n">calculate_progress</span> <span class="n">data</span> <span class="c1"># =&gt; a float in 0..1  </span>
+    <span class="p">{</span> <span class="ss">progress</span><span class="p">:</span> <span class="n">progress</span>
+      <span class="ss">data</span><span class="p">:</span>     <span class="n">data</span> <span class="p">}</span>
   <span class="k">end</span>
 <span class="k">end</span>
 </code></pre></div>
+<p>This action will do following in run phase:</p>
+
+<ol>
+<li> <code>invoke_external_task</code> on first run of the action</li>
+<li> suspends and then periodically:
+
+<ol>
+<li> wakes up</li>
+<li> <code>poll_external_task</code></li>
+<li> checks if <code>done?</code>: 
+
+<ul>
+<li><code>true</code> -&gt; it concludes the run phase</li>
+<li><code>false</code> -&gt; it schedules next polling</li>
+</ul></li>
+</ol></li>
+</ol>
+
+<p>There are 2 other methods handling external task data which can optionally overridden:</p>
+
+<ul>
+<li>  <code>external_task</code> - reads the external task&#39;s stored data, by default it reads <code>self.output[:task]</code></li>
+<li>  <code>external_task=</code> - writes the the external task&#39;s stored data, by default it writes to 
+<code>self.output[:task] = value</code></li>
+</ul>
+
+<p>There are also other features implemented like:</p>
+
+<ul>
+<li>  Gradual prolongation of the polling interval.</li>
+<li>  Retries on a poll failing.</li>
+</ul>
+
+<p>Please see the 
+<a href="https://github.com/Dynflow/dynflow/blob/master/lib/dynflow/action/polling.rb"><code>Polling</code> module</a>
+for more details.</p>
+
 <h2 id="how-it-works">How it works</h2>
 
 <h3 id="to-be-added">To be added</h3>
