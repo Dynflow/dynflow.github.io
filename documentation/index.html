@@ -214,6 +214,7 @@ needed configuration.</li>
 <ul>
 <li>  as current user</li>
 </ul></li>
+<li>  SubTasks</li>
 </ul>
 
 <h3 id="action-anatomy">Action anatomy</h3>
@@ -438,8 +439,32 @@ which is a topic for next chapter.</p>
 actions only once at the end when the external task is finished. In that case we often 
 need to poll the service to see if the task is still running or finished.</p>
 
-<p><em>TODO</em></p>
+<p>For that purpose there is <code>Polling</code> module in Dynflow. Any action can be turned into a polling one
+just by including the module.</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">AnAction</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
+  <span class="kp">include</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span><span class="o">::</span><span class="no">Polling</span>
+</code></pre></div>
+<p>3 methods need to be always implemented: <code>done?</code>, <code>invoke_external_task</code>, <code>poll_external_task</code>.</p>
 
+<ul>
+<li>  <code>done?</code> - determines when the task is complete based on external task&#39;s data.</li>
+<li>  <code>invoke_external_task</code> - starts the external task.</li>
+<li>  <code>poll_external_task</code> - polls the external task status data and returns a status 
+(JSON serializable data like: <code>Hash</code>, <code>Array</code>, <code>String</code>, etc.) which are stored in action&#39;s
+output.</li>
+</ul>
+
+<p><em>TODO finish example and <code>external_task</code>, <code>external_task=</code> methods description</em></p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby">  <span class="k">def</span> <span class="nf">done?</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">invoke_external_task</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">poll_external_task</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</code></pre></div>
 <h2 id="how-it-works">How it works</h2>
 
 <h3 id="to-be-added">To be added</h3>
@@ -490,17 +515,6 @@ need to poll the service to see if the task is still running or finished.</p>
 <!-- Include all compiled plugins (below), or include individual files as needed -->
 <script src="/bootstrap/js/bootstrap.min.js"></script>
 
-
-<script>
-    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-        (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-            m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
-
-    ga('create', 'UA-4005004-8', 'auto');
-    ga('send', 'pageview');
-
-</script>
 
 
 <script type="text/javascript">
