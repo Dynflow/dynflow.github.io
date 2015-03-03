@@ -71,7 +71,7 @@
     
     <div class="col-md-4">
                 <div class="toc well" data-spy="affix" data-offset-top="0" data-offset-bottom="0">
-          <h4>Table of content</h4
+          <h4>Table of content</h4>
           <ul>
 <li>
 <a href="#high-level-overview">High level overview</a>
@@ -87,6 +87,26 @@
 </li>
 <li>
 <a href="#action-anatomy">Action anatomy</a>
+<ul>
+<li>
+<a href="#input-and-output">Input and Output</a>
+</li>
+<li>
+<a href="#triggering">Triggering</a>
+</li>
+<li>
+<a href="#planning">Planning</a>
+</li>
+<li>
+<a href="#running">Running</a>
+</li>
+<li>
+<a href="#finalizing">Finalizing</a>
+</li>
+</ul>
+</li>
+<li>
+<a href="#action-dependencies">Action dependencies</a>
 </li>
 <li>
 <a href="#action-composition">Action composition</a>
@@ -189,12 +209,14 @@ needed configuration.</li>
 <li>  for keeping consistency between local database and external systems</li>
 <li>  sub-tasks</li>
 </ul></li>
+<li>  Creating World</li>
 <li>  Action anatomy
 
 <ul>
 <li>  Input/Output</li>
-</ul></li>
 <li>  Phases</li>
+</ul></li>
+<li>  Action dependencies</li>
 <li>  <del>Actions composition</del></li>
 <li>  <del>subscribe/plugins</del></li>
 <li>  <del>Suspending</del></li>
@@ -219,7 +241,139 @@ needed configuration.</li>
 
 <h3 id="action-anatomy">Action anatomy</h3>
 
-<p><em>TODO to be refined</em></p>
+<p>Each action can be viewed as a function. It&#39;s planned for execution with 
+input, then it&#39;s executed producing output quite possibly having side-effects. 
+After that some finalizing steps can be taken. Actions can use outputs of other actions
+as parts of their inputs establishing dependency.</p>
+
+<p>As lightly touched in the previous paragraph there are 3 phases: planning, running, finalizing.
+Planning phase starts by triggering an action.</p>
+
+<h4 id="input-and-output">Input and Output</h4>
+
+<p><em>TODO</em></p>
+
+<h4 id="triggering">Triggering</h4>
+
+<p>Any action is triggered by calling:</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="n">world_instance</span><span class="o">.</span><span class="n">trigger</span><span class="p">(</span><span class="no">AnAction</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
+</code></pre></div>
+<p>which starts immediately planning the action in the same thread and returns after planning.</p>
+
+<div class=" alert alert-info">
+  <p><strong>Note:</strong> In Foreman and Katello actions are usually triggered by <code>ForemanTask.async_task</code> and
+<code>ForemanTasks.async_task</code> so following part is not that important if you are using
+<code>ForemanTasks</code>.</p>
+
+</div>
+
+<p><code>World#trigger</code> method returns object of <code>TriggerResult</code> type. Which is 
+<a href="http://blog.pitr.ch/projects/algebrick/">Algebrick</a> variant type where definition follows:</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="no">TriggerResult</span> <span class="o">=</span> <span class="no">Algebrick</span><span class="o">.</span><span class="n">type</span> <span class="k">do</span>
+  <span class="c1"># Returned by #trigger when planning fails.</span>
+  <span class="no">PlaningFailed</span>   <span class="o">=</span> <span class="n">type</span> <span class="p">{</span> <span class="n">fields!</span> <span class="ss">execution_plan_id</span><span class="p">:</span> <span class="nb">String</span><span class="p">,</span> <span class="ss">error</span><span class="p">:</span> <span class="no">Exception</span> <span class="p">}</span>
+  <span class="c1"># Returned by #trigger when planning is successful but execution fails to start.</span>
+  <span class="no">ExecutionFailed</span> <span class="o">=</span> <span class="n">type</span> <span class="p">{</span> <span class="n">fields!</span> <span class="ss">execution_plan_id</span><span class="p">:</span> <span class="nb">String</span><span class="p">,</span> <span class="ss">error</span><span class="p">:</span> <span class="no">Exception</span> <span class="p">}</span>
+  <span class="c1"># Returned by #trigger when planning is successful, #future will resolve after</span>
+  <span class="c1"># ExecutionPlan is executed.</span>
+  <span class="no">Triggered</span>       <span class="o">=</span> <span class="n">type</span> <span class="p">{</span> <span class="n">fields!</span> <span class="ss">execution_plan_id</span><span class="p">:</span> <span class="nb">String</span><span class="p">,</span> <span class="ss">future</span><span class="p">:</span> <span class="no">Future</span> <span class="p">}</span>
+
+  <span class="n">variants</span> <span class="no">PlaningFailed</span><span class="p">,</span> <span class="no">ExecutionFailed</span><span class="p">,</span> <span class="no">Triggered</span>
+<span class="k">end</span>
+</code></pre></div>
+<p>If you do not know <code>Algebrick</code> you can think about these as <code>Struct</code>s with types.
+You can see how it&#39;s used to distinguish all the possible results 
+<a href="https://github.com/theforeman/foreman-tasks/blob/master/lib/foreman_tasks.rb#L20-L32">in ForemanTasks module</a>.</p>
+
+<h4 id="planning">Planning</h4>
+
+<p>Planning follows immediately after action is triggered. Planning always uses the tread 
+triggering the action. It starts by executing <code>plan</code> method of the action instance passing in 
+arguments from <code>World#trigger method</code></p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="n">world_instance</span><span class="o">.</span><span class="n">trigger</span><span class="p">(</span><span class="no">AnAction</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
+<span class="c1"># executes following</span>
+<span class="n">an_action</span><span class="o">.</span><span class="n">plan</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span> <span class="c1"># an_action is AnAction</span>
+</code></pre></div>
+<p>By default <code>plan</code> method plans itself if <code>run</code> method is present using first argument as input.</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">AnAction</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
+  <span class="k">def</span> <span class="nf">run</span>
+    <span class="n">output</span><span class="o">.</span><span class="n">update</span> <span class="nb">self</span><span class="o">.</span><span class="n">input</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="n">world_instance</span><span class="o">.</span><span class="n">trigger</span> <span class="no">AnAction</span><span class="p">,</span> <span class="ss">data</span><span class="p">:</span> <span class="s1">&#39;nothing&#39;</span>
+</code></pre></div>
+<p>The above will just plan itself copying input to output in run phase.</p>
+
+<p>In most cases the <code>plan</code> method is overridden to plan self with transformed arguments and/or 
+to plan other actions. Let&#39;s look at the argument transformation first:</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">AnAction</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
+  <span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="n">any_array</span><span class="p">)</span>
+    <span class="c1"># pick just numbers</span>
+    <span class="n">plan_self</span> <span class="ss">numbers</span><span class="p">:</span> <span class="n">any_array</span><span class="o">.</span><span class="n">select</span> <span class="p">{</span> <span class="o">|</span><span class="n">v</span><span class="o">|</span> <span class="n">v</span><span class="o">.</span><span class="n">is_a?</span> <span class="no">Number</span> <span class="p">}</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">run</span>
+    <span class="c1"># compute sum - simulating a time consuming operation</span>
+    <span class="n">output</span><span class="o">.</span><span class="n">update</span> <span class="ss">sum</span><span class="p">:</span> <span class="n">input</span><span class="o">[</span><span class="ss">:numbers</span><span class="o">].</span><span class="n">reduce</span><span class="p">(</span><span class="o">&amp;</span><span class="ss">:+</span><span class="p">)</span> 
+  <span class="k">end</span>
+<span class="k">end</span>
+</code></pre></div>
+<p>Now let&#39;s see an example with action planning:</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">SumNumbers</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
+  <span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="n">numbers</span><span class="p">)</span>
+    <span class="n">plan_self</span> <span class="ss">numbers</span><span class="p">:</span> <span class="n">numbers</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">run</span>
+    <span class="n">output</span><span class="o">.</span><span class="n">update</span> <span class="ss">sum</span><span class="p">:</span> <span class="n">input</span><span class="o">[</span><span class="ss">:numbers</span><span class="o">].</span><span class="n">reduce</span><span class="p">(</span><span class="o">&amp;</span><span class="ss">:+</span><span class="p">)</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="k">class</span> <span class="nc">SumManyNumbers</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
+  <span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="n">numbers</span><span class="p">)</span>
+    <span class="c1"># references to planned actions</span>
+    <span class="n">planned_sub_sum_actions</span> <span class="o">=</span> <span class="n">numbers</span><span class="o">.</span><span class="n">each_slice</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">numbers</span><span class="o">|</span>
+      <span class="n">plan_action</span> <span class="no">SumNumbers</span><span class="p">,</span> <span class="n">numbers</span>
+    <span class="k">end</span>
+
+    <span class="c1"># prepare array of output references where each points to sum in the </span>
+    <span class="c1"># output of particular action</span>
+    <span class="n">sub_sums</span> <span class="o">=</span> <span class="n">planned_sub_sum_actions</span><span class="o">.</span><span class="n">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">action</span><span class="o">|</span>
+      <span class="n">action</span><span class="o">.</span><span class="n">output</span><span class="o">[</span><span class="ss">:sum</span><span class="o">]</span>
+    <span class="k">end</span>
+
+    <span class="c1"># plan one last action which will sum the sub_sums</span>
+    <span class="c1"># it depends on all planned_sub_sum_actions because it uses theirs outputs</span>
+    <span class="n">plan_action</span> <span class="no">SumNumbers</span><span class="p">,</span> <span class="n">sub_sums</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="n">world_instance</span><span class="o">.</span><span class="n">trigger</span> <span class="no">SumManyNumbers</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span><span class="o">.</span><span class="n">.</span><span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">to_a</span>
+</code></pre></div>
+<p>Above example will in parallel sum numbers by slices of 10 values: first action sums <code>1..10</code>,
+second action sums <code>11..20</code>, ..., tenth action sums <code>91..100</code>. After all sub sums are computed
+one final action sums the sub sums into final sum.</p>
+
+<div class=" alert alert-warning">
+  <p><strong>Warning:</strong> This example is here to demonstrate the planning abilities. In reality it paralyzation of 
+compute intensive tasks does not have a positive effect on Dynflow running on MRI. The pool of
+workers may starve. It is not a big issue since Dynflow is mainly used to orchestrate external 
+services.</p>
+
+<p><em>TODO add link to detail explanation when available in How it works.</em></p>
+
+</div>
+
+<h4 id="running">Running</h4>
+
+<p><em>TODO</em></p>
+
+<h4 id="finalizing">Finalizing</h4>
+
+<p><em>TODO</em></p>
+
+<p><em>TODO bellow to be refined</em></p>
 
 <ul>
 <li>  input/output</li>
@@ -278,6 +432,10 @@ needed configuration.</li>
   <span class="k">end</span>
 <span class="k">end</span>
 </code></pre></div>
+<h3 id="action-dependencies">Action dependencies</h3>
+
+<p><em>TODO</em> explain <code>sequence</code> and <code>concurrence</code></p>
+
 <h3 id="action-composition">Action composition</h3>
 
 <p>Dynflow is designed to allow easy composition of small building blocks
@@ -300,7 +458,7 @@ example:</p>
   <span class="k">end</span>
 <span class="k">end</span>
 </code></pre></div>
-<p>Action <code>CreateInfrastructure</code> is does not have a <code>run</code> method defined, it only
+<p>Action <code>CreateInfrastructure</code> does not have a <code>run</code> method defined, it only
 defines <code>plan</code> action where other actions composed together.</p>
 
 <h3 id="subscriptions">Subscriptions</h3>
