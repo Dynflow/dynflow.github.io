@@ -209,7 +209,7 @@ needed configuration.</li>
 <li>  for keeping consistency between local database and external systems</li>
 <li>  sub-tasks</li>
 </ul></li>
-<li>  Creating World</li>
+<li>  Creating World (what is executor?)</li>
 <li>  Action anatomy
 
 <ul>
@@ -244,14 +244,17 @@ needed configuration.</li>
 <p>Each action can be viewed as a function. It&#39;s planned for execution with 
 input, then it&#39;s executed producing output quite possibly having side-effects. 
 After that some finalizing steps can be taken. Actions can use outputs of other actions
-as parts of their inputs establishing dependency.</p>
+as parts of their inputs establishing dependency. Action&#39;s state is serialized between each phase
+and survives machine/executor restarts.</p>
 
 <p>As lightly touched in the previous paragraph there are 3 phases: planning, running, finalizing.
 Planning phase starts by triggering an action.</p>
 
 <h4 id="input-and-output">Input and Output</h4>
 
-<p><em>TODO</em></p>
+<p>Both input and output are <code>Hash</code>es accessible by <code>Action#input</code> and <code>Action#output</code> methods. They
+need to be serializable to JSON so it should contain only combination of primitive Ruby types
+like: <code>Hash</code>, <code>Array</code>, <code>String</code>, <code>Integer</code>, etc.</p>
 
 <h4 id="triggering">Triggering</h4>
 
@@ -288,7 +291,8 @@ You can see how it&#39;s used to distinguish all the possible results
 <h4 id="planning">Planning</h4>
 
 <p>Planning follows immediately after action is triggered. Planning always uses the tread 
-triggering the action. It starts by executing <code>plan</code> method of the action instance passing in 
+triggering the action. Planning phase configures actions&#39;s input for run phase.
+It starts by executing <code>plan</code> method of the action instance passing in 
 arguments from <code>World#trigger method</code></p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="n">world_instance</span><span class="o">.</span><span class="n">trigger</span><span class="p">(</span><span class="no">AnAction</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
 <span class="c1"># executes following</span>
@@ -369,9 +373,18 @@ services.</p>
 
 <p><em>TODO</em></p>
 
+<ul>
+<li>  does not touches input just uses it</li>
+<li>  defines output</li>
+</ul>
+
 <h4 id="finalizing">Finalizing</h4>
 
 <p><em>TODO</em></p>
+
+<ul>
+<li>  does not touches input or output just uses it</li>
+</ul>
 
 <p><em>TODO bellow to be refined</em></p>
 
