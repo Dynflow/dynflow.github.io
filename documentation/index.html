@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="icon" href="images/logo-small.png" type="image/x-icon">
+    <link rel="icon" href="/images/logo-square.png" type="image/x-icon">
 
     <title>Documentation - Dynflow</title>
 
@@ -34,10 +34,14 @@
                 <span class="icon-bar"></span>
                 <span class="icon-bar"></span>
             </button>
-            <a class="navbar-brand" href="/">Dynflow</a>
+            <a class="navbar-brand" href="/">
+                <img src="/images/logo-square.png">
+                Dynflow
+            </a>
         </div>
         <div id="navbar" class="collapse navbar-collapse">
             <ul class="nav navbar-nav">
+                <!--TODO make active-->
                 <li><a href="/">About</a></li>
                 <li><a href="/documentation/">Documentation</a></li>
                 <li><a href="/faq/">FAQ</a></li>
@@ -130,7 +134,12 @@
 <a href="#polling">Polling</a>
 </li>
 <li>
-<a href="#error-handling-todo">Error handling TODO</a>
+<a href="#error-handling">Error handling</a>
+<ul>
+<li>
+<a href="#rescue-strategy-todo">Rescue strategy TODO</a>
+</li>
+</ul>
 </li>
 <li>
 <a href="#console-todo">Console TODO</a>
@@ -139,10 +148,10 @@
 <a href="#testing-todo">Testing TODO</a>
 </li>
 <li>
-<a href="#short-vs.-long-running-actions-todo">Short vs. long running actions TODO</a>
+<a href="#short-and-long-running-actions-todo">Short and long running actions TODO</a>
 </li>
 <li>
-<a href="#middleware-todo">Middleware TODO</a>
+<a href="#middleware">Middleware</a>
 </li>
 <li>
 <a href="#subtasks-todo">SubTasks TODO</a>
@@ -157,9 +166,6 @@
 </li>
 <li>
 <a href="#inter-worlds-communication-/-multi-executors-todo">inter-worlds communication / multi-executors TODO</a>
-</li>
-<li>
-<a href="#links-to-concurrent-ruby/algebrick-todo">Links to concurrent-ruby/algebrick TODO</a>
 </li>
 <li>
 <a href="#thread-pools-todo">Thread-pools TODO</a>
@@ -268,10 +274,15 @@ needed configuration.</li>
 <h3 id="world-creation-todo">World creation TODO</h3>
 
 <ul>
-<li>  <em>include executor definition</em></li>
+<li>  <em>include executor description</em></li>
 </ul>
 
 <h3 id="development-vs-production-todo">Development vs production TODO</h3>
+
+<ul>
+<li>  <em>In development execution runs in the same process, in production there is an 
+executor process.</em></li>
+</ul>
 
 <h3 id="action-anatomy">Action anatomy</h3>
 
@@ -825,44 +836,123 @@ output.</li>
 <a href="https://github.com/Dynflow/dynflow/blob/master/lib/dynflow/action/polling.rb"><code>Polling</code> module</a>
 for more details.</p>
 
-<h3 id="error-handling-todo">Error handling TODO</h3>
+<h3 id="error-handling">Error handling</h3>
 
-<ul>
-<li>  rescue strategy</li>
-<li>  resume</li>
-</ul>
+<p>If there is an error in <strong>planning</strong> phase, the error is recorded and raised by <code>trigger</code> method.</p>
+
+<p>If there is an error in <strong>running</strong> phase, the execution pauses. You can inspect the error in 
+<a href="#console">console</a>. The error may be intermittent or you may fix the problem manually. After
+that the execution plan can be resumed and it&#39;ll continue by rerunning the failed action and 
+continuing with the rest of the actions. During fixing the problem you may also do the steps
+in the actions manually, in that case the failed action can be also marked as skipped. After
+resuming the skipped action is not executed and the execution plan continues with the rest.</p>
+
+<p>If there is an error in <strong>finalizing</strong> phase, whole finalization phase for all the actions is
+rollbacked and can be rerun when the problem is fixed by resuming.</p>
+
+<p>If you encounter an error during run phase <code>error!</code> or usual <code>raise</code> can be used.</p>
+
+<h4 id="rescue-strategy-todo">Rescue strategy TODO</h4>
 
 <h3 id="console-todo">Console TODO</h3>
 
-<h3 id="testing-todo">Testing TODO</h3>
-
-<h3 id="short-vs.-long-running-actions-todo">Short vs. long running actions TODO</h3>
-
-<h3 id="middleware-todo">Middleware TODO</h3>
-
 <ul>
-<li>  as current user example</li>
+<li>  <em>where to access</em></li>
+<li>  <em>screenshots</em></li>
 </ul>
 
+<h3 id="testing-todo">Testing TODO</h3>
+
+<ul>
+<li>  <em>testing helper methods</em></li>
+<li>  <em>examples</em></li>
+<li>  <em>see <a href="https://github.com/Dynflow/dynflow/blob/master/test/testing_test.rb">testing of testing</a></em></li>
+</ul>
+
+<h3 id="short-and-long-running-actions-todo">Short and long running actions TODO</h3>
+
+<ul>
+<li>  <em>run phase is not designed for CPU heavy computations</em></li>
+<li>  <em>and for long blocking operations</em></li>
+<li>  <em>better to suspend, or offload to a service</em></li>
+</ul>
+
+<h3 id="middleware">Middleware</h3>
+
+<p>Each action class has chain of middlewares which wrap phases of the action execution.
+It&#39;s very similar to rack middlewares.
+To create new middleware inherit from <code>Dynflow::Middleware</code> class. It has 5 methods which can be
+overridden: <code>plan</code>, <code>run</code>, <code>finalize</code>, <code>plan_phase</code>, <code>finalize_phase</code>. Where the default 
+implementation for all the methods looks as following</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
+  <span class="n">pass</span> <span class="o">*</span><span class="n">args</span>
+<span class="k">end</span>
+</code></pre></div>
+<p>When overriding user can insert code before and/or after the <code>pass</code> method which executes next
+middleware in the chain or the action itself which is at the end of the chain. Most usually the
+<code>pass</code> is always called somewhere in the overridden method. There may be some cases when it can
+be omitted, then it&#39;ll prevent all following middlewares and action from running.</p>
+
+<p>Some implementation examples: 
+<a href="https://github.com/theforeman/foreman-tasks/blob/master/app/lib/actions/middleware/keep_current_user.rb">KeepCurrentUser</a>,
+<a href="https://github.com/Dynflow/dynflow/blob/master/lib/dynflow/action/progress.rb#L13-L42">Action::Progress::Calculate</a>.</p>
+
+<p>Each Action has a chain of middlewares defined. Middleware can be added by calling <code>use</code> 
+in the action class.</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">AnAction</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
+  <span class="n">use</span> <span class="no">AMiddleware</span><span class="p">,</span> <span class="ss">after</span><span class="p">:</span> <span class="no">AnotherMiddleware</span>
+<span class="k">end</span>
+</code></pre></div>
+<p>Method <code>use</code> understands 3 option keys:</p>
+
+<ul>
+<li>  <code>:before</code> - makes this middleware to be ordered before a given middleware </li>
+<li>  <code>:after</code> - makes this middleware to be ordered after a given middleware </li>
+<li>  <code>:replace</code> - this middleware will replace given middleware</li>
+</ul>
+
+<p>The <code>:before</code> and <code>:after</code> keys are used to build a graph from the middlewares which is then 
+sorted down with 
+<a href="http://ruby-doc.org//stdlib-2.0/libdoc/tsort/rdoc/TSort.html">topological sort</a>
+to the chain of middleware execution.</p>
+
 <h3 id="subtasks-todo">SubTasks TODO</h3>
+
+<ul>
+<li>  <em>when to use?</em></li>
+<li>  <em>hot to use?</em></li>
+</ul>
 
 <h2 id="how-it-works-todo">How it works TODO</h2>
 
 <h3 id="action-states-todo">Action states TODO</h3>
 
+<ul>
+<li>  <em>normal phases and Present phase</em></li>
+</ul>
+
 <h3 id="inter-worlds-communication-/-multi-executors-todo">inter-worlds communication / multi-executors TODO</h3>
 
-<h3 id="links-to-concurrent-ruby/algebrick-todo">Links to concurrent-ruby/algebrick TODO</h3>
-
 <h3 id="thread-pools-todo">Thread-pools TODO</h3>
+
+<ul>
+<li>  <em>how it works now</em></li>
+<li>  <em>how it&#39;ll work</em></li>
+<li>  <em>gotchas</em>
+
+<ul>
+<li>  <em>worker pool sizing</em></li>
+</ul></li>
+</ul>
 
 <h3 id="suspending--&gt;-events-todo">Suspending -&gt; events TODO</h3>
 
 <h2 id="use-cases-todo">Use cases TODO</h2>
 
 <ul>
-<li>  Embedded without a DB, like inside CLI tool for a complex installation</li>
-<li>  reserve resources in planning do not try to do <code>if</code>s in run phase</li>
+<li>  <em>Embedded without a DB, like inside CLI tool for a complex installation</em></li>
+<li>  <em>reserve resources in planning do not try to do <code>if</code>s in run phase</em></li>
+<li>  <em>Projects: katello, foreman, staypuft, fusor</em></li>
 </ul>
 
 <h2 id="comments">Comments</h2>
