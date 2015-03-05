@@ -104,10 +104,10 @@
 <a href="#planning">Planning</a>
 </li>
 <li>
-<a href="#running-todo">Running TODO</a>
+<a href="#running">Running</a>
 </li>
 <li>
-<a href="#finalizing-todo">Finalizing TODO</a>
+<a href="#finalizing">Finalizing</a>
 </li>
 </ul>
 </li>
@@ -115,7 +115,7 @@
 <a href="#dependencies">Dependencies</a>
 </li>
 <li>
-<a href="#database-transactions-todo">Database transactions TODO</a>
+<a href="#database-and-transactions">Database and Transactions</a>
 </li>
 <li>
 <a href="#composition">Composition</a>
@@ -290,6 +290,8 @@ Planning phase starts by triggering an action.</p>
 need to be serializable to JSON so it should contain only combination of primitive Ruby types
 like: <code>Hash</code>, <code>Array</code>, <code>String</code>, <code>Integer</code>, etc.</p>
 
+<p><em>TODO describe input and output specification</em> </p>
+
 <h4 id="triggering">Triggering</h4>
 
 <p>Any action is triggered by calling:</p>
@@ -403,82 +405,28 @@ services.</p>
 
 </div>
 
-<h4 id="running-todo">Running TODO</h4>
+<p>Action may access local DB in planning phase, 
+see <a href="#database-and-transactions">Database and Transactions</a>.</p>
 
-<p><em>TODO</em></p>
+<h4 id="running">Running</h4>
 
-<ul>
-<li>  does not touches input just uses it</li>
-<li>  defines output</li>
-</ul>
+<p>Actions has a running phase if there is <code>run</code> method implemented. 
+(There may be actions just planning other actions.)</p>
 
-<h4 id="finalizing-todo">Finalizing TODO</h4>
+<p>The run method implements the main piece of work done by this action converting 
+input into output. Input is immutable in this phase. It&#39;s the right place for all the steps
+which are likely to fail. Action may have side effects.
+Local DB should not be accessed in this phase,
+see <a href="#database-and-transactions">Database and Transactions</a></p>
 
-<p><em>TODO</em></p>
+<h4 id="finalizing">Finalizing</h4>
 
-<ul>
-<li>  does not touches input or output just uses it</li>
-</ul>
+<p>Main purpose of finalization phase is to be able access local DB after action finishes
+successfully, like: indexing based on new data, updating records as fully created, etc. 
+Finalize phase does not modify input or output of the action. 
+Action may access local DB in finalizing phase and must be <strong>idempotent</strong>, 
+see <a href="#database-and-transactions">Database and Transactions</a>.</p>
 
-<p><em>TODO bellow to be refined</em></p>
-
-<ul>
-<li>  input/output</li>
-<li>  it&#39;s kind a dirty function</li>
-</ul>
-<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="c1"># every action needs to inherit from Dynflow::Action</span>
-<span class="k">class</span> <span class="nc">Action</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
-
-  <span class="c1"># OPTIONAL: the input format for the execution phase of this action</span>
-  <span class="c1"># (https://github.com/iNecas/apipie-params for more details.</span>
-  <span class="c1"># Validations can be performed against this description (turned off</span>
-  <span class="c1"># for now)</span>
-  <span class="n">input_format</span> <span class="k">do</span>
-    <span class="n">param</span> <span class="ss">:id</span><span class="p">,</span> <span class="nb">Integer</span>
-    <span class="n">param</span> <span class="ss">:name</span><span class="p">,</span> <span class="nb">String</span>
-  <span class="k">end</span>
-
-  <span class="c1"># OPTIONAL: every action can produce an output in the execution</span>
-  <span class="c1"># phase. This allows to describe the output.</span>
-  <span class="n">output_format</span> <span class="k">do</span>
-    <span class="n">param</span> <span class="ss">:uuid</span><span class="p">,</span> <span class="nb">String</span>
-  <span class="k">end</span>
-
-  <span class="c1"># OPTIONAL: this specifies that this action should be performed when</span>
-  <span class="c1"># AnotherAction is triggered.</span>
-  <span class="k">def</span> <span class="nc">self</span><span class="o">.</span><span class="nf">subscribe</span>
-    <span class="no">AnotherAction</span>
-  <span class="k">end</span>
-
-  <span class="c1"># OPTIONAL: executed during the planning phase. It&#39;s possible to</span>
-  <span class="c1"># specify explicitly the workflow here. By default it schedules just</span>
-  <span class="c1"># this action.</span>
-  <span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="n">object_1</span><span class="p">,</span> <span class="n">object_2</span><span class="p">)</span>
-    <span class="c1"># +plan_action+ schedules the SubAction to be part of this</span>
-    <span class="c1"># workflow</span>
-    <span class="c1"># the +object_1+ is passed to the +SubAction#plan+ method.</span>
-    <span class="n">plan_action</span> <span class="no">SubAction</span><span class="p">,</span> <span class="n">object_1</span>
-    <span class="c1"># we can specify, where in the workflow this action should be</span>
-    <span class="c1"># placed, as well as prepare the input.</span>
-    <span class="n">plan_self</span> <span class="p">{</span> <span class="nb">id</span><span class="p">:</span> <span class="n">object_2</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="nb">name</span><span class="p">:</span> <span class="n">object_2</span><span class="o">.</span><span class="n">name</span><span class="p">}</span>
-  <span class="k">end</span>
-
-  <span class="c1"># OPTIONAL: run the execution part of this action. Transform the</span>
-  <span class="c1"># data from +input+ to +output+. When not specified, the action is</span>
-  <span class="c1"># not used in the execution phase.</span>
-  <span class="k">def</span> <span class="nf">run</span>
-    <span class="n">output</span><span class="o">[</span><span class="ss">:uuid</span><span class="o">]</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">#{</span><span class="n">input</span><span class="o">[</span><span class="ss">:name</span><span class="o">]</span><span class="si">}</span><span class="s2">-</span><span class="si">#{</span><span class="n">input</span><span class="o">[</span><span class="ss">:id</span><span class="o">]</span><span class="si">}</span><span class="s2">&quot;</span>
-  <span class="k">end</span>
-
-  <span class="c1"># OPTIONAL: finalize the action after the execution phase finishes.</span>
-  <span class="c1"># in the +input+ and +output+ attributes are available the data from</span>
-  <span class="c1"># execution phase. in the +outputs+ argument, all the execution</span>
-  <span class="c1"># phase actions are available, each providing its input and output.</span>
-  <span class="k">def</span> <span class="nf">finalize</span>
-    <span class="nb">puts</span> <span class="n">output</span><span class="o">[</span><span class="ss">:uuid</span><span class="o">]</span>
-  <span class="k">end</span>
-<span class="k">end</span>
-</code></pre></div>
 <h3 id="dependencies">Dependencies</h3>
 
 <p>As already mentioned, actions can use output of different actions as their input (or just parts).
@@ -609,14 +557,45 @@ though they could be run concurrently.</p>
 
 </div>
 
-<h3 id="database-transactions-todo">Database transactions TODO</h3>
+<h3 id="database-and-transactions">Database and Transactions</h3>
 
-<p><em>TODO</em></p>
+<p>Dynflow was designed to help with orchestration of other services. 
+The usual execution looks as follows, we use a yum repository as example of a resource.</p>
+
+<ol>
+<li> Trigger repository creation, argument is an object describing the repository.</li>
+<li> Planning: The repository is stored in local DB (in the Dynflow hosting application) within the 
+planning phase. The record is marked as incomplete. </li>
+<li> Running: The repository creation is initiated in external service with (e.g.) REST call.
+The phase finishes when the repository creation is done.</li>
+<li> Finalizing: The record in local DB is marked as done.</li>
+</ol>
+
+<p>For that reason there are transactions around whole planning and finalizing phase 
+(all action&#39;s plan methods are in one transaction).
+If anything goes wrong in the planning phase any change made during planning to local DB is 
+reverted. Same holds for finalizing, if anything goes wrong, all changes are reverted. Therefore 
+all finalization methods has to be <strong>idempotent</strong>. </p>
+
+<p>Internally Dynflow uses Sequel as its ORM, but users may choose what they need
+to access they data. There is an interface <code>TransactionAdapters::Abstract</code> where its 
+implementations may provide transactions using different ORMs. 
+The most common one probably being <code>TransactionAdapters::ActiveRecord</code>.</p>
+
+<p>So in the above example 2. and 4. step would be wrapped in <code>ActiveRecord</code> transaction 
+if <code>TransactionAdapters::ActiveRecord</code> is used.</p>
+
+<p>Second outcome of the design is convention when actions should be accessing local Database:</p>
 
 <ul>
-<li>  DB should be modified and read only in <code>plan</code> and <code>finalize</code></li>
-<li>  transaction adapters</li>
+<li>  <strong>allowed</strong> in planning and finalizing phases</li>
+<li>  <strong>disallowed</strong> in running phase</li>
 </ul>
+
+<div class=" alert alert-warning">
+  <p><strong>Warning:</strong> <em>TODO warning about AR pool configuration, needs to have sufficient size</em></p>
+
+</div>
 
 <h3 id="composition">Composition</h3>
 
@@ -967,16 +946,20 @@ for more details.</p>
 <!-- Place this tag in your head or just before your close body tag. -->
 <script src="https://apis.google.com/js/platform.js" async defer></script>
 
-
 <script type="text/javascript">
     $().ready(function () {
-        $('.toc a').on('click', function (e) {
+        var callback = function (e) {
             var target = $(this).attr('href');
-            $('html,body').animate({scrollTop: $(target).offset().top - 70}, 'normal');
-            e.preventDefault();
-        });
+            if (target.charAt(0) == '#' && $(target).length) {
+                $('html,body').animate({scrollTop: $(target).offset().top - 70}, 'normal');
+                e.preventDefault();
+            }
+        };
+        $('.toc a').on('click', callback);
+        $('.page a').on('click', callback);
     });
 </script>
+
 
 </body>
 </html>
