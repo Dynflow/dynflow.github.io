@@ -5650,19 +5650,6 @@ body {
 #disqus_thread {
   margin-top: 50px; }
 
-#big_logo {
-  text-align: center; }
-  #big_logo img {
-    padding: 10px;
-    padding-left: auto;
-    padding-right: auto; }
-
-.navbar-brand img {
-  height: 50px;
-  display: inline;
-  margin-top: -20px;
-  margin-bottom: -20px; }
-
 .toc.well h4 {
   margin-top: 0; }
 @media (min-width: 992px) {
@@ -5679,6 +5666,12 @@ body {
     top: 0; } }
 pre {
   font-size: 14px; }
+
+.alert > p + .highlight pre {
+  margin-top: 5px;
+  margin-bottom: 0px; }
+.alert > .highlight + p {
+  margin-top: 5px; }
 
 .toc {
   counter-reset: l1counter; }
@@ -5742,3 +5735,16 @@ h3.nocount:before {
 h4.nocount:before {
   content: none;
   counter-increment: none; }
+
+#big_logo {
+  text-align: center; }
+  #big_logo img {
+    padding: 10px;
+    padding-left: auto;
+    padding-right: auto; }
+
+.navbar-brand img {
+  height: 50px;
+  display: inline;
+  margin-top: -20px;
+  margin-bottom: -20px; }
