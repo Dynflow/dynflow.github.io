@@ -204,7 +204,7 @@ Dynflow
   <p><strong>Danger</strong> </p>
 
 <p>Work in progress! It contains a lot of tpyos, please let us know. There are comments at the bottom
-or you can submit a PR against <a href="https://github.com/dynflow/dynflow/tree/pages">pages branch</a>. </p>
+or you can submit a PR against <a href="https://github.com/dynflow/dynflow/tree/pages">pages branch</a>.</p>
 
 <p>Please help with the documentation if you know Dynflow.</p>
 
@@ -250,7 +250,7 @@ external services</li>
 
 <ul>
 <li>  <strong>Action</strong> - building block of execution plans, a Ruby class inherited
-from <code>Dynflow::Action</code>, defines code to be run in each phase. </li>
+from <code>Dynflow::Action</code>, defines code to be run in each phase.</li>
 <li>  <strong>Phase</strong> - Each action has three phases: <code>plan</code>, <code>run</code>, <code>finalize</code>.</li>
 <li>  <strong>Input/Output</strong> - Each action has one. It&#39;s a <code>Hash</code> of data which is persisted.</li>
 <li>  <strong>Execution plan</strong> - definition of the workflow: product of the plan phase</li>
@@ -262,7 +262,9 @@ about steps that can run concurrently/in sequence. Part of execution plan.</li>
 the execution plan. It can run in the same process as the plan phase or in
 different process (using the remote executor)</li>
 <li>  <strong>World</strong> - the universe where the Dynflow runs the code: it holds all
-needed configuration.</li>
+needed configuration. Usually there&#39;s only one world per Dynflow process,
+besides configuration it also holds <code>Persistence</code>, <code>Logger</code>, <code>Executor</code> and
+all the other objects necessary for action executing.</li>
 </ul>
 
 <h2 id="examples-todo">Examples TODO</h2>
@@ -287,14 +289,50 @@ needed configuration.</li>
 <h3 id="development-vs-production-todo">Development vs production TODO</h3>
 
 <ul>
-<li>  <em>In development execution runs in the same process, in production there is an 
+<li>  <em>In development execution runs in the same process, in production there is an
 executor process.</em></li>
 </ul>
 
 <h3 id="action-anatomy">Action anatomy</h3>
 
-<p>Each action can be viewed as a function. It&#39;s planned for execution with 
-input, then it&#39;s executed producing output quite possibly having side-effects. 
+<p>When action is triggered, Dynflow executes plan method on this action, which
+is responsible for building the execution plan. It builds the execution plan by calling
+<code>plan_action</code> and <code>plan_self</code> methods, effectively listing actions that should be run as
+a part of this execution plan. In other words, it compiles a list of actions on which
+method <code>run</code> will be called. Also it&#39;s responsible for giving these actions
+an order. A simple example of such plan action might look like this</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="c1"># this would plan deletion of files passed as an input array</span>
+<span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="n">files</span><span class="p">)</span>
+  <span class="n">files</span><span class="o">.</span><span class="n">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">filename</span><span class="o">|</span>
+    <span class="n">plan_action</span> <span class="no">MyActions</span><span class="o">::</span><span class="no">File</span><span class="o">::</span><span class="no">Destroy</span><span class="p">,</span> <span class="n">filename</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</code></pre></div>
+<p>Note that it does not have to be only other actions that are planned to run.
+In fact it&#39;s very common that the action plan itself, which means it will
+put it&#39;s own <code>run</code> method call in the execution plan. In order to do that
+you can use <code>plan_self</code>. This could be used in MyActions::File::Destroy
+used in previous example</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">MyActions</span><span class="o">::</span><span class="no">File</span><span class="o">::</span><span class="no">Destroy</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
+  <span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+    <span class="n">plan_self</span> <span class="ss">path</span><span class="p">:</span> <span class="n">filename</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">run</span>
+    <span class="no">File</span><span class="o">.</span><span class="n">rm</span><span class="p">(</span><span class="n">input</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="ss">:path</span><span class="p">))</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</code></pre></div>
+<p>In example above, it seems that <code>plan_self</code> is just shortcut to
+<code>plan_action MyActions::File::Destroy, filename</code> but it&#39;s not entirely true.
+Note that plan<em>action always trigger plan of a given action while plan</em>self
+plans only the run of Action, so by using plan_action we&#39;d end up in
+endless loop.</p>
+
+<p>Also note, that run method does not take any input. In fact, it can use
+<code>input</code> method that refers to arguments, that were used in plan_self.</p>
+
+<p>Similar to the input mentioned above, the run produces output.
 After that some finalizing steps can be taken. Actions can use outputs of other actions
 as parts of their inputs establishing dependency. Action&#39;s state is serialized between each phase
 and survives machine/executor restarts.</p>
@@ -307,6 +345,16 @@ Planning phase starts by triggering an action.</p>
 <p>Both input and output are <code>Hash</code>es accessible by <code>Action#input</code> and <code>Action#output</code> methods. They
 need to be serializable to JSON so it should contain only combination of primitive Ruby types
 like: <code>Hash</code>, <code>Array</code>, <code>String</code>, <code>Integer</code>, etc.</p>
+
+<p>The convectional way how to update <code>input</code> and <code>output</code> is using <code>Hash#update</code> method.</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="n">output</span><span class="o">.</span><span class="n">update</span> <span class="ss">success</span><span class="p">:</span> <span class="kp">true</span>
+</code></pre></div>
+<p>The reason is to avoid accidental data deletion. <code>update</code> will leave other keys
+untouched, where</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="nb">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="p">{</span> <span class="ss">success</span><span class="p">:</span> <span class="kp">true</span> <span class="p">}</span>
+</code></pre></div>
+<p>would delete all other data stored in <code>output</code>
+by middlewares or other parts of the action itself.</p>
 
 <div class=" alert alert-info">
   <p><strong>Note</strong> </p>
@@ -324,7 +372,8 @@ like: <code>Hash</code>, <code>Array</code>, <code>String</code>, <code>Integer<
 <span class="k">end</span>
 </code></pre></div>
 <p>The format follows <a href="https://github.com/iNecas/apipie-params">apipie-params</a> for more details.
-Validations of input/output could be performed against this description but it&#39;s not turned on.</p>
+Validations of input/output could be performed against this description but it&#39;s not turned on
+by default. (It needs to be revisited and updated to be fully functional.)</p>
 
 </div>
 
@@ -338,13 +387,13 @@ Validations of input/output could be performed against this description but it&#
 <div class=" alert alert-info">
   <p><strong>Note</strong> </p>
 
-<p>In Foreman and Katello actions are usually triggered by <code>ForemanTask.async_task</code> and
+<p>In Foreman and Katello actions are usually triggered by <code>ForemanTask.sync_task</code> and
 <code>ForemanTasks.async_task</code> so following part is not that important if you are using
 <code>ForemanTasks</code>.</p>
 
 </div>
 
-<p><code>World#trigger</code> method returns object of <code>TriggerResult</code> type. Which is 
+<p><code>World#trigger</code> method returns object of <code>TriggerResult</code> type. Which is
 <a href="http://blog.pitr.ch/projects/algebrick/">Algebrick</a> variant type where definition follows:</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="no">TriggerResult</span> <span class="o">=</span> <span class="no">Algebrick</span><span class="o">.</span><span class="n">type</span> <span class="k">do</span>
   <span class="c1"># Returned by #trigger when planning fails.</span>
@@ -359,20 +408,39 @@ Validations of input/output could be performed against this description but it&#
 <span class="k">end</span>
 </code></pre></div>
 <p>If you do not know <code>Algebrick</code> you can think about these as <code>Struct</code>s with types.
-You can see how it&#39;s used to distinguish all the possible results 
+You can see how it&#39;s used to distinguish all the possible results
 <a href="https://github.com/theforeman/foreman-tasks/blob/master/lib/foreman_tasks.rb#L20-L32">in ForemanTasks module</a>.</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">def</span> <span class="nc">self</span><span class="o">.</span><span class="nf">trigger_task</span><span class="p">(</span><span class="n">async</span><span class="p">,</span> <span class="n">action</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">block</span><span class="p">)</span>
+  <span class="no">Match</span><span class="o">!</span> <span class="n">async</span><span class="p">,</span> <span class="kp">true</span><span class="p">,</span> <span class="kp">false</span>
 
+  <span class="n">match</span> <span class="n">trigger</span><span class="p">(</span><span class="n">action</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">block</span><span class="p">),</span>
+        <span class="c1"># Raise if there is any error caused either by failed planning or</span>
+        <span class="c1"># by faild start of execution.</span>
+        <span class="p">(</span><span class="n">on</span> <span class="o">::</span><span class="no">Dynflow</span><span class="o">::</span><span class="no">World</span><span class="o">::</span><span class="no">PlaningFailed</span><span class="o">.</span><span class="p">(</span><span class="ss">error</span><span class="p">:</span> <span class="o">~</span><span class="n">any</span><span class="p">)</span> <span class="o">|</span>
+                <span class="o">::</span><span class="no">Dynflow</span><span class="o">::</span><span class="no">World</span><span class="o">::</span><span class="no">ExecutionFailed</span><span class="o">.</span><span class="p">(</span><span class="ss">error</span><span class="p">:</span> <span class="o">~</span><span class="n">any</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">error</span><span class="o">|</span>
+          <span class="k">raise</span> <span class="n">error</span>
+        <span class="k">end</span><span class="p">),</span>
+        <span class="c1"># Succesfully triggered.</span>
+        <span class="p">(</span><span class="n">on</span> <span class="o">::</span><span class="no">Dynflow</span><span class="o">::</span><span class="no">World</span><span class="o">::</span><span class="no">Triggered</span><span class="o">.</span><span class="p">(</span>
+              <span class="ss">execution_plan_id</span><span class="p">:</span> <span class="o">~</span><span class="n">any</span><span class="p">,</span> <span class="ss">future</span><span class="p">:</span> <span class="o">~</span><span class="n">any</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="nb">id</span><span class="p">,</span> <span class="n">finished</span><span class="o">|</span>
+          <span class="c1"># block on the finished Future if this is called synchronously</span>
+          <span class="n">finished</span><span class="o">.</span><span class="n">wait</span> <span class="k">if</span> <span class="n">async</span> <span class="o">==</span> <span class="kp">false</span>
+          <span class="k">return</span> <span class="no">ForemanTasks</span><span class="o">::</span><span class="no">Task</span><span class="o">::</span><span class="no">DynflowTask</span><span class="o">.</span><span class="n">find_by_external_id!</span><span class="p">(</span><span class="nb">id</span><span class="p">)</span>
+        <span class="k">end</span><span class="p">)</span>
+<span class="k">end</span>
+</code></pre></div>
 <h4 id="planning">Planning</h4>
 
-<p>Planning follows immediately after action is triggered. Planning always uses the tread 
+<p>Planning follows immediately after action is triggered. Planning always uses the tread
 triggering the action. Planning phase configures actions&#39;s input for run phase.
-It starts by executing <code>plan</code> method of the action instance passing in 
+It starts by executing <code>plan</code> method of the action instance passing in
 arguments from <code>World#trigger method</code></p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="n">world_instance</span><span class="o">.</span><span class="n">trigger</span><span class="p">(</span><span class="no">AnAction</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
 <span class="c1"># executes following</span>
 <span class="n">an_action</span><span class="o">.</span><span class="n">plan</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span> <span class="c1"># an_action is AnAction</span>
 </code></pre></div>
-<p>By default <code>plan</code> method plans itself if <code>run</code> method is present using first argument as input.</p>
+<p><code>plan</code> method is inherited from Dynflow::Action and by default it plans itself if
+<code>run</code> method is present using first argument as input.</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">AnAction</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
   <span class="k">def</span> <span class="nf">run</span>
     <span class="n">output</span><span class="o">.</span><span class="n">update</span> <span class="nb">self</span><span class="o">.</span><span class="n">input</span>
@@ -383,7 +451,7 @@ arguments from <code>World#trigger method</code></p>
 </code></pre></div>
 <p>The above will just plan itself copying input to output in run phase.</p>
 
-<p>In most cases the <code>plan</code> method is overridden to plan self with transformed arguments and/or 
+<p>In most cases the <code>plan</code> method is overridden to plan self with transformed arguments and/or
 to plan other actions. Let&#39;s look at the argument transformation first:</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">AnAction</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
   <span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="n">any_array</span><span class="p">)</span>
@@ -393,7 +461,7 @@ to plan other actions. Let&#39;s look at the argument transformation first:</p>
 
   <span class="k">def</span> <span class="nf">run</span>
     <span class="c1"># compute sum - simulating a time consuming operation</span>
-    <span class="n">output</span><span class="o">.</span><span class="n">update</span> <span class="ss">sum</span><span class="p">:</span> <span class="n">input</span><span class="o">[</span><span class="ss">:numbers</span><span class="o">].</span><span class="n">reduce</span><span class="p">(</span><span class="o">&amp;</span><span class="ss">:+</span><span class="p">)</span> 
+    <span class="n">output</span><span class="o">.</span><span class="n">update</span> <span class="ss">sum</span><span class="p">:</span> <span class="n">input</span><span class="o">[</span><span class="ss">:numbers</span><span class="o">].</span><span class="n">reduce</span><span class="p">(</span><span class="o">&amp;</span><span class="ss">:+</span><span class="p">)</span>
   <span class="k">end</span>
 <span class="k">end</span>
 </code></pre></div>
@@ -415,7 +483,7 @@ to plan other actions. Let&#39;s look at the argument transformation first:</p>
       <span class="n">plan_action</span> <span class="no">SumNumbers</span><span class="p">,</span> <span class="n">numbers</span>
     <span class="k">end</span>
 
-    <span class="c1"># prepare array of output references where each points to sum in the </span>
+    <span class="c1"># prepare array of output references where each points to sum in the</span>
     <span class="c1"># output of particular action</span>
     <span class="n">sub_sums</span> <span class="o">=</span> <span class="n">planned_sub_sum_actions</span><span class="o">.</span><span class="n">map</span> <span class="k">do</span> <span class="o">|</span><span class="n">action</span><span class="o">|</span>
       <span class="n">action</span><span class="o">.</span><span class="n">output</span><span class="o">[</span><span class="ss">:sum</span><span class="o">]</span>
@@ -436,47 +504,49 @@ one final action sums the sub sums into final sum.</p>
 <div class=" alert alert-warning">
   <p><strong>Warning</strong> </p>
 
-<p>This example is here to demonstrate the planning abilities. In reality this paralyzation of 
+<p>This example is here to demonstrate the planning abilities. In reality this parallelization of
 compute intensive tasks does not have a positive effect on Dynflow running on MRI. The pool of
-workers may starve. It is not a big issue since Dynflow is mainly used to orchestrate external 
+workers may starve. It is not a big issue since Dynflow is mainly used to orchestrate external
 services.</p>
 
 <p><em>TODO add link to detail explanation in How it works when available.</em></p>
 
 </div>
 
-<p>Action may access local DB in planning phase, 
+<p>Action may access local DB in planning phase,
 see <a href="#database-and-transactions">Database and Transactions</a>.</p>
 
 <h4 id="running">Running</h4>
 
-<p>Actions has a running phase if there is <code>run</code> method implemented. 
+<p>Actions has a running phase if there is <code>run</code> method implemented.
 (There may be actions just planning other actions.)</p>
 
-<p>The run method implements the main piece of work done by this action converting 
+<p>The run method implements the main piece of work done by this action converting
 input into output. Input is immutable in this phase. It&#39;s the right place for all the steps
-which are likely to fail. Action may have side effects.
+which are likely to fail. Action <code>run</code> phase are allowed to have side effects like: file operations,
+calls to other systems, etc.
 Local DB should not be accessed in this phase,
 see <a href="#database-and-transactions">Database and Transactions</a></p>
 
 <h4 id="finalizing">Finalizing</h4>
 
 <p>Main purpose of finalization phase is to be able access local DB after action finishes
-successfully, like: indexing based on new data, updating records as fully created, etc. 
-Finalize phase does not modify input or output of the action. 
-Action may access local DB in finalizing phase and must be <strong>idempotent</strong>, 
+successfully, like: indexing based on new data, updating records as fully created, etc.
+Finalize phase does not modify input or output of the action.
+Action may access local DB in finalizing phase and must be <strong>idempotent</strong>,
 see <a href="#database-and-transactions">Database and Transactions</a>.</p>
 
 <h3 id="dependencies">Dependencies</h3>
 
 <p>As already mentioned, actions can use output of different actions as their input (or just parts).
-When they does it creates dependency between actions.</p>
+When they do it creates dependency between actions, which is automatically detected
+by Dynflow and the execution plan is built accordingly.</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">def</span> <span class="nf">plan</span>
   <span class="n">first_action</span>  <span class="o">=</span> <span class="n">plan_action</span> <span class="no">AnAction</span>
   <span class="n">second_action</span> <span class="o">=</span> <span class="n">plan_action</span> <span class="no">AnAction</span><span class="p">,</span> <span class="n">first_action</span><span class="o">.</span><span class="n">output</span><span class="o">[</span><span class="ss">:a_key_in_output</span><span class="o">]</span>
 <span class="k">end</span>
 </code></pre></div>
-<p><code>second_action</code> uses part of the <code>first_action</code>&#39;s output 
+<p><code>second_action</code> uses part of the <code>first_action</code>&#39;s output
 therefore it depends on the <code>first_action</code>.</p>
 
 <p>If actions are planned without this dependency as follows</p>
@@ -488,10 +558,10 @@ therefore it depends on the <code>first_action</code>.</p>
 <p>then they are independent and they are executed concurrently.</p>
 
 <p>There is also other mechanism how to describe dependencies between actions than just
-the one based on output usage. Dynflow user can specify the order between planned 
+the one based on output usage. Dynflow user can specify the order between planned
 actions with DSL methods <code>sequence</code> and <code>concurrence</code>. Both methods are taking blocks
-and they specify how actions planned inside the block 
-(or inner <code>sequence</code> and <code>concurrence</code> blocks) should be executed. </p>
+and they specify how actions planned inside the block
+(or inner <code>sequence</code> and <code>concurrence</code> blocks) should be executed.</p>
 
 <p>By default <code>plan</code> considers it&#39;s space as inside <code>concurrence</code>. Which means</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">def</span> <span class="nf">plan</span>
@@ -507,8 +577,8 @@ and they specify how actions planned inside the block
   <span class="k">end</span>
 <span class="k">end</span>
 </code></pre></div>
-<p>You can establish same dependency between <code>first_action</code> and <code>second_action</code> without 
-using output by using <code>sequnce</code></p>
+<p>You can establish same dependency between <code>first_action</code> and <code>second_action</code> without
+using output by using <code>sequence</code></p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">def</span> <span class="nf">plan</span>
   <span class="n">sequence</span> <span class="k">do</span>
     <span class="n">first_action</span>  <span class="o">=</span> <span class="n">plan_action</span> <span class="no">AnAction</span>
@@ -516,7 +586,7 @@ using output by using <code>sequnce</code></p>
   <span class="k">end</span>
 <span class="k">end</span>
 </code></pre></div>
-<p>As mentioned the <code>sequence</code> and <code>concurrence</code> methods can be nested and mixed 
+<p>As mentioned the <code>sequence</code> and <code>concurrence</code> methods can be nested and mixed
 with output usage to create more complex dependencies. Let see commented example:</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">def</span> <span class="nf">plan</span>
   <span class="c1"># Plans 3 actions of type AnAction to be executed in sequence</span>
@@ -531,13 +601,13 @@ with output usage to create more complex dependencies. Let see commented example
 
   <span class="c1"># It&#39;s planed in default plan&#39;s concurrency scope it&#39;s executed concurrently</span>
   <span class="c1"># to about four actions.</span>
-  <span class="n">action2</span> <span class="o">=</span> <span class="n">plan_action</span> <span class="no">AnAction</span>  
+  <span class="n">action2</span> <span class="o">=</span> <span class="n">plan_action</span> <span class="no">AnAction</span>
 <span class="k">end</span>
 </code></pre></div>
 <p>The order than will be:</p>
 
 <ul>
-<li>  concurrently: 
+<li>  concurrently:
 
 <ul>
 <li>  sequentially:
@@ -596,37 +666,37 @@ just for backward compatibility.</p>
 
 <p>Internally dependencies are also modeled with objects representing Sequences and Concurrences,
 which makes it weaker than acyclic-graph so in some cases during the dependency resolution
-it may lead into not the most effective execution plan. Some actions will run in sequence even 
+it may lead into not the most effective execution plan. Some actions will run in sequence even
 though they could be run concurrently.</p>
 
 </div>
 
 <h3 id="database-and-transactions">Database and Transactions</h3>
 
-<p>Dynflow was designed to help with orchestration of other services. 
+<p>Dynflow was designed to help with orchestration of other services.
 The usual execution looks as follows, we use a yum repository as example of a resource.</p>
 
 <ol>
 <li> Trigger repository creation, argument is an object describing the repository.</li>
-<li> Planning: The repository is stored in local DB (in the Dynflow hosting application) within the 
-planning phase. The record is marked as incomplete. </li>
+<li> Planning: The repository is stored in local DB (in the Dynflow hosting application) within the
+planning phase. The record is marked as incomplete.</li>
 <li> Running: The repository creation is initiated in external service with (e.g.) REST call.
 The phase finishes when the repository creation is done.</li>
 <li> Finalizing: The record in local DB is marked as done.</li>
 </ol>
 
-<p>For that reason there are transactions around whole planning and finalizing phase 
+<p>For that reason there are transactions around whole planning and finalizing phase
 (all action&#39;s plan methods are in one transaction).
-If anything goes wrong in the planning phase any change made during planning to local DB is 
-reverted. Same holds for finalizing, if anything goes wrong, all changes are reverted. Therefore 
-all finalization methods has to be <strong>idempotent</strong>. </p>
+If anything goes wrong in the planning phase any change made during planning to local DB is
+reverted. Same holds for finalizing, if anything goes wrong, all changes are reverted. Therefore
+all finalization methods has to be <strong>idempotent</strong>.</p>
 
 <p>Internally Dynflow uses Sequel as its ORM, but users may choose what they need
-to access they data. There is an interface <code>TransactionAdapters::Abstract</code> where its 
-implementations may provide transactions using different ORMs. 
+to access they data. There is an interface <code>TransactionAdapters::Abstract</code> where its
+implementations may provide transactions using different ORMs.
 The most common one probably being <code>TransactionAdapters::ActiveRecord</code>.</p>
 
-<p>So in the above example 2. and 4. step would be wrapped in <code>ActiveRecord</code> transaction 
+<p>So in the above example 2. and 4. step would be wrapped in <code>ActiveRecord</code> transaction
 if <code>TransactionAdapters::ActiveRecord</code> is used.</p>
 
 <p>Second outcome of the design is convention when actions should be accessing local Database:</p>
@@ -646,7 +716,7 @@ if <code>TransactionAdapters::ActiveRecord</code> is used.</p>
 <h3 id="composition">Composition</h3>
 
 <p>Dynflow is designed to allow easy composition of small building blocks
-called <code>Action</code>s. Typically there are actions composing smaller pieces 
+called <code>Action</code>s. Typically there are actions composing smaller pieces
 together and other actions doing actual steps of work as in following
 example:</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">CreateInfrastructure</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
@@ -670,7 +740,7 @@ defines <code>plan</code> action where other actions composed together.</p>
 
 <h3 id="subscriptions">Subscriptions</h3>
 
-<p>Even though composing actions is quite ease and allows to decompose
+<p>Even though composing actions is quite easy and allows to decompose
 business logic to small pieces it does not directly support extensions
 by plugins. For that there are subscriptions.</p>
 
@@ -678,7 +748,7 @@ by plugins. For that there are subscriptions.</p>
 loaded <code>Actions</code>, doing so they extend the planning process with self.</p>
 
 <p>Lets look at an example starting by definition of a core action</p>
-<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="c1"># This action can be extended without doing any </span>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="c1"># This action can be extended without doing any</span>
 <span class="c1"># other steps to support it.</span>
 <span class="k">class</span> <span class="nc">ACoreAppAction</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
   <span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="n">arguments</span><span class="p">)</span>
@@ -700,7 +770,7 @@ loaded <code>Actions</code>, doing so they extend the planning process with self
   <span class="k">end</span>
 
   <span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="n">arguments</span><span class="p">)</span>
-    <span class="n">arguments</span> <span class="c1"># are same as in ACoreAppAction#plan</span>
+    <span class="c1"># arguments are same as in ACoreAppAction#plan</span>
     <span class="n">plan_self</span><span class="p">(</span><span class="ss">args</span><span class="p">:</span> <span class="n">arguments</span><span class="p">)</span>
   <span class="k">end</span>
 
@@ -713,7 +783,7 @@ loaded <code>Actions</code>, doing so they extend the planning process with self
 subscribing to which is called <code>trigger</code>. Their plan method is called right
 after planning of the triggering action finishes.</p>
 
-<p>It&#39;s also possible to access target action and use its output which 
+<p>It&#39;s also possible to access target action and use its output which
 makes it dependent (running in sequence) on triggering action.</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="n">arguments</span><span class="p">)</span>
   <span class="n">plan_self</span> <span class="ss">trigger_success</span><span class="p">:</span> <span class="n">trigger</span><span class="o">.</span><span class="n">output</span><span class="o">[</span><span class="ss">:success</span><span class="o">]</span>
@@ -724,17 +794,17 @@ makes it dependent (running in sequence) on triggering action.</p>
 <span class="k">end</span>
 </code></pre></div>
 <p>Subscription is designed for extension by plugins, it should <strong>not</strong> be used
-inside a single library/app-module. It would make the process definition 
+inside a single library/app-module. It would make the process definition
 hard to follow (all subscribed actions would need to be looked up).</p>
 
 <h3 id="suspending">Suspending</h3>
 
-<p>Sometimes action represents tasks taken in different services, 
+<p>Sometimes action represents tasks taken in different services,
 (e.g. repository synchronization in <a href="http://www.pulpproject.org/">Pulp</a>).
-Dynflow tries not to waste computer resources so it offers tools to free 
+Dynflow tries not to waste computer resources so it offers tools to free
 threads to work on other actions while waiting on external tasks or events.</p>
 
-<p>Dynflow allows actions to suspend and be woken up on external events. 
+<p>Dynflow allows actions to suspend and be woken up on external events.
 Lets create a simulation of an external service before showing the example
 of suspending action.</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">AnExternalService</span>
@@ -761,8 +831,8 @@ event <code>:done</code> back by <code>&lt;&lt;</code> method.</p>
   <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="n">event</span><span class="p">)</span>
     <span class="k">case</span> <span class="n">event</span>
     <span class="k">when</span> <span class="kp">nil</span> <span class="c1"># first run</span>
-      <span class="n">suspend</span> <span class="k">do</span> <span class="o">|</span><span class="n">suspended_action</span><span class="o">|</span> 
-        <span class="no">EXTERNAL_SERVICE</span><span class="o">.</span><span class="n">start_synchronization</span> <span class="n">suspended_action</span> 
+      <span class="n">suspend</span> <span class="k">do</span> <span class="o">|</span><span class="n">suspended_action</span><span class="o">|</span>
+        <span class="no">EXTERNAL_SERVICE</span><span class="o">.</span><span class="n">start_synchronization</span> <span class="n">suspended_action</span>
       <span class="k">end</span>
     <span class="k">when</span> <span class="ss">:done</span> <span class="c1"># external task is done</span>
       <span class="n">output</span><span class="o">.</span><span class="n">update</span> <span class="ss">success</span><span class="p">:</span> <span class="kp">true</span>
@@ -776,7 +846,7 @@ event <code>:done</code> back by <code>&lt;&lt;</code> method.</p>
 <p>Which is then executed as follows:</p>
 
 <ol>
-<li> <code>AnAction</code> is triggered </li>
+<li> <code>AnAction</code> is triggered</li>
 <li> It&#39;s planned.</li>
 <li> Its <code>run</code> phase begins.</li>
 <li> <code>run</code> method is invoked with no event (<code>nil</code>).</li>
@@ -786,7 +856,7 @@ to suspended_action.</li>
 <li> Action is suspended, execution of the run method finishes immediately
 after <code>suspend</code> is called, its block parameter is evaluated right after
 suspending.</li>
-<li> Action is kept on memory to be woken up when events are received but it does not 
+<li> Action is kept on memory to be woken up when events are received but it does not
 block any threads.</li>
 <li> Action receives <code>:done</code> event through suspend action reference.</li>
 <li> <code>run</code> method is executed again with <code>:done</code> event.</li>
@@ -794,14 +864,14 @@ block any threads.</li>
 <li> There is no <code>finalize</code> phase, action is done.</li>
 </ol>
 
-<p>This event mechanism is quite flexible, it can be used for example to build a 
+<p>This event mechanism is quite flexible, it can be used for example to build a
 <a href="https://github.com/Dynflow/dynflow/blob/master/lib/dynflow/action/polling.rb">polling action abstraction</a>
 which is a topic for next chapter.</p>
 
 <h3 id="polling">Polling</h3>
 
 <p>Not all services support callbacks to be registered which would allow to wake up suspended
-actions only once at the end when the external task is finished. In that case we often 
+actions only once at the end when the external task is finished. In that case we often
 need to poll the service to see if the task is still running or finished.</p>
 
 <p>For that purpose there is <code>Polling</code> module in Dynflow. Any action can be turned into a polling one
@@ -814,7 +884,7 @@ just by including the module.</p>
 <ul>
 <li>  <code>done?</code> - determines when the task is complete based on external task&#39;s data.</li>
 <li>  <code>invoke_external_task</code> - starts the external task.</li>
-<li>  <code>poll_external_task</code> - polls the external task status data and returns a status 
+<li>  <code>poll_external_task</code> - polls the external task status data and returns a status
 (JSON serializable data like: <code>Hash</code>, <code>Array</code>, <code>String</code>, etc.) which are stored in action&#39;s
 output.</li>
 </ul>
@@ -823,12 +893,12 @@ output.</li>
   <span class="k">end</span>
 
   <span class="k">def</span> <span class="nf">invoke_external_task</span>
-    <span class="n">triger_the_task_with_rest_call</span>  
+    <span class="n">triger_the_task_with_rest_call</span>
   <span class="k">end</span>
 
   <span class="k">def</span> <span class="nf">poll_external_task</span>
     <span class="n">data</span>     <span class="o">=</span> <span class="n">poll_data_with_rest_call</span>
-    <span class="n">progress</span> <span class="o">=</span> <span class="n">calculate_progress</span> <span class="n">data</span> <span class="c1"># =&gt; a float in 0..1  </span>
+    <span class="n">progress</span> <span class="o">=</span> <span class="n">calculate_progress</span> <span class="n">data</span> <span class="c1"># =&gt; a float in 0..1</span>
     <span class="p">{</span> <span class="ss">progress</span><span class="p">:</span> <span class="n">progress</span>
       <span class="ss">data</span><span class="p">:</span>     <span class="n">data</span> <span class="p">}</span>
   <span class="k">end</span>
@@ -843,7 +913,7 @@ output.</li>
 <ol>
 <li> wakes up</li>
 <li> <code>poll_external_task</code></li>
-<li> checks if <code>done?</code>: 
+<li> checks if <code>done?</code>:
 
 <ul>
 <li><code>true</code> -&gt; it concludes the run phase</li>
@@ -856,7 +926,7 @@ output.</li>
 
 <ul>
 <li>  <code>external_task</code> - reads the external task&#39;s stored data, by default it reads <code>self.output[:task]</code></li>
-<li>  <code>external_task=</code> - writes the the external task&#39;s stored data, by default it writes to 
+<li>  <code>external_task=</code> - writes the the external task&#39;s stored data, by default it writes to
 <code>self.output[:task] = value</code></li>
 </ul>
 
@@ -867,23 +937,23 @@ output.</li>
 <li>  Retries on a poll failing.</li>
 </ul>
 
-<p>Please see the 
+<p>Please see the
 <a href="https://github.com/Dynflow/dynflow/blob/master/lib/dynflow/action/polling.rb"><code>Polling</code> module</a>
 for more details.</p>
 
 <h3 id="states">States</h3>
 
-<p>Each <strong>Action</strong> phase can be in one of the following states:</p>
+<p>Each <strong>Action phase</strong> can be in one of the following states:</p>
 
 <ul>
 <li>  <strong>Pending</strong> - Not yet executed.</li>
-<li>  <strong>Running</strong> - Action phase is being executed right now.</li>
-<li>  <strong>Success</strong> - Action phase execution finished successfully.</li>
+<li>  <strong>Running</strong> - An action phase id being executed right now.</li>
+<li>  <strong>Success</strong> - Execution of an action phase finished successfully.</li>
 <li>  <strong>Error</strong> - There was an error during execution.</li>
 <li>  <strong>Suspended</strong> - Only <code>run</code> phase, when action sleeps waiting for events to be woken up.</li>
-<li>  <strong>Skipped</strong> - Failed actions can be marked as skipped allowing rest of the 
+<li>  <strong>Skipped</strong> - Failed actions can be marked as skipped allowing rest of the
 execution plan to finish successfully.</li>
-<li>  <strong>Skipping</strong> - Action is marked for skipping but execution plan was not yet 
+<li>  <strong>Skipping</strong> - Action is marked for skipping but execution plan was not yet
 resumed to mark it as Skipped.</li>
 </ul>
 
@@ -894,7 +964,7 @@ resumed to mark it as Skipped.</li>
 <li>  <strong>Planning</strong> - It&#39;s being planned.</li>
 <li>  <strong>Planned</strong> - It&#39;ve been planned, running phase did not start yet.</li>
 <li>  <strong>Running</strong> - It&#39;s running, <code>run</code> and <code>finalize</code> phases of actions are executed.</li>
-<li>  <strong>Paused</strong> - It was paused when running. Happens on error or executor restart. </li>
+<li>  <strong>Paused</strong> - It was paused when running. Happens on error or executor restart.</li>
 <li>  <strong>Stopped</strong> - Execution plan is completed.</li>
 </ul>
 
@@ -902,18 +972,25 @@ resumed to mark it as Skipped.</li>
 
 <ul>
 <li>  <strong>Success</strong> - Everything finished without error or skips.</li>
-<li>  <strong>Warning</strong> - When there are skipped steps.<br></li>
+<li>  <strong>Warning</strong> - When there are skipped steps.</li>
 <li>  <strong>Error</strong> - When one or more actions failed.</li>
 <li>  <strong>Pending</strong> - Execution plan still runs.</li>
 </ul>
 
+<p><em>TODO how do I access such states as a programmer?</em>
+<em>TODO which Action phase states are &quot;finish&quot; and which requires user interaction?</em></p>
+
 <h3 id="error-handling">Error handling</h3>
 
-<p>If there is an error in <strong>planning</strong> phase, the error is recorded and raised by <code>trigger</code> method.</p>
+<p>If there is an error risen in <strong>planning</strong> phase, the error is recorded in the Action persistence
+and it bubbles up in <code>World#trigger</code> method which was used to trigger the action leading to
+this error. If you compare it to errors raised during <code>run</code> and <code>finalize</code> phase,
+there&#39;s the major difference: Those are never bubbling up in <code>trigger</code> because they are running
+in executor not in triggering Thread, they are just stored in Action persistence.</p>
 
-<p>If there is an error in <strong>running</strong> phase, the execution pauses. You can inspect the error in 
+<p>If there is an error in <strong>running</strong> phase, the execution pauses. You can inspect the error in
 <a href="#console">console</a>. The error may be intermittent or you may fix the problem manually. After
-that the execution plan can be resumed and it&#39;ll continue by rerunning the failed action and 
+that the execution plan can be resumed and it&#39;ll continue by rerunning the failed action and
 continuing with the rest of the actions. During fixing the problem you may also do the steps
 in the actions manually, in that case the failed action can be also marked as skipped. After
 resuming the skipped action is not executed and the execution plan continues with the rest.</p>
@@ -952,12 +1029,12 @@ workers, if more of them become busy it may result in worsen performance.</p>
 
 <p>Blocking actions for long time are also problematic.</p>
 
-<p>Solutions are: </p>
+<p>Solutions are:</p>
 
 <ul>
-<li>  <strong>Using action suspending</strong> - suspending the action until a condition is met, 
+<li>  <strong>Using action suspending</strong> - suspending the action until a condition is met,
 freeing the worker.</li>
-<li>  <strong>Offloading computation</strong> - CPU heavy parts can be offloaded to different services 
+<li>  <strong>Offloading computation</strong> - CPU heavy parts can be offloaded to different services
 notifying the suspended actions when the computation is done.</li>
 </ul>
 
@@ -966,7 +1043,7 @@ notifying the suspended actions when the computation is done.</li>
 <p>Each action class has chain of middlewares which wrap phases of the action execution.
 It&#39;s very similar to rack middlewares.
 To create new middleware inherit from <code>Dynflow::Middleware</code> class. It has 5 methods which can be
-overridden: <code>plan</code>, <code>run</code>, <code>finalize</code>, <code>plan_phase</code>, <code>finalize_phase</code>. Where the default 
+overridden: <code>plan</code>, <code>run</code>, <code>finalize</code>, <code>plan_phase</code>, <code>finalize_phase</code>. Where the default
 implementation for all the methods looks as following</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
   <span class="n">pass</span> <span class="o">*</span><span class="n">args</span>
@@ -977,11 +1054,11 @@ middleware in the chain or the action itself which is at the end of the chain. M
 <code>pass</code> is always called somewhere in the overridden method. There may be some cases when it can
 be omitted, then it&#39;ll prevent all following middlewares and action from running.</p>
 
-<p>Some implementation examples: 
+<p>Some implementation examples:
 <a href="https://github.com/theforeman/foreman-tasks/blob/master/app/lib/actions/middleware/keep_current_user.rb">KeepCurrentUser</a>,
 <a href="https://github.com/Dynflow/dynflow/blob/master/lib/dynflow/action/progress.rb#L13-L42">Action::Progress::Calculate</a>.</p>
 
-<p>Each Action has a chain of middlewares defined. Middleware can be added by calling <code>use</code> 
+<p>Each Action has a chain of middlewares defined. Middleware can be added by calling <code>use</code>
 in the action class.</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">AnAction</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
   <span class="n">use</span> <span class="no">AMiddleware</span><span class="p">,</span> <span class="ss">after</span><span class="p">:</span> <span class="no">AnotherMiddleware</span>
@@ -990,13 +1067,13 @@ in the action class.</p>
 <p>Method <code>use</code> understands 3 option keys:</p>
 
 <ul>
-<li>  <code>:before</code> - makes this middleware to be ordered before a given middleware </li>
-<li>  <code>:after</code> - makes this middleware to be ordered after a given middleware </li>
+<li>  <code>:before</code> - makes this middleware to be ordered before a given middleware</li>
+<li>  <code>:after</code> - makes this middleware to be ordered after a given middleware</li>
 <li>  <code>:replace</code> - this middleware will replace given middleware</li>
 </ul>
 
-<p>The <code>:before</code> and <code>:after</code> keys are used to build a graph from the middlewares which is then 
-sorted down with 
+<p>The <code>:before</code> and <code>:after</code> keys are used to build a graph from the middlewares which is then
+sorted down with
 <a href="http://ruby-doc.org//stdlib-2.0/libdoc/tsort/rdoc/TSort.html">topological sort</a>
 to the chain of middleware execution.</p>
 
@@ -1004,7 +1081,7 @@ to the chain of middleware execution.</p>
 
 <ul>
 <li>  <em>when to use?</em></li>
-<li>  <em>hot to use?</em></li>
+<li>  <em>how to use?</em></li>
 </ul>
 
 <h2 id="how-it-works-todo">How it works TODO</h2>
