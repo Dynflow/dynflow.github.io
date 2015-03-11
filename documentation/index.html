@@ -325,12 +325,12 @@ used in previous example</p>
 </code></pre></div>
 <p>In example above, it seems that <code>plan_self</code> is just shortcut to
 <code>plan_action MyActions::File::Destroy, filename</code> but it&#39;s not entirely true.
-Note that plan<em>action always trigger plan of a given action while plan</em>self
-plans only the run of Action, so by using plan_action we&#39;d end up in
+Note that <code>plan_action</code> always trigger <code>plan</code> of a given action while <code>plan_self</code>
+plans only the <code>run</code> of Action, so by using <code>plan_action</code> we&#39;d end up in
 endless loop.</p>
 
 <p>Also note, that run method does not take any input. In fact, it can use
-<code>input</code> method that refers to arguments, that were used in plan_self.</p>
+<code>input</code> method that refers to arguments, that were used in <code>plan_self</code>.</p>
 
 <p>Similar to the input mentioned above, the run produces output.
 After that some finalizing steps can be taken. Actions can use outputs of other actions
