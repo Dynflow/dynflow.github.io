@@ -83,7 +83,7 @@ Dynflow
 <a href="#high-level-overview-todo">High level overview TODO</a>
 </li>
 <li>
-<a href="#glossary-todo">Glossary TODO</a>
+<a href="#glossary">Glossary</a>
 </li>
 <li>
 <a href="#examples">Examples</a>
@@ -107,13 +107,13 @@ Dynflow
 <a href="#triggering">Triggering</a>
 </li>
 <li>
-<a href="#planning">Planning</a>
+<a href="#plan-phase">Plan phase</a>
 </li>
 <li>
-<a href="#running">Running</a>
+<a href="#run-phase">Run phase</a>
 </li>
 <li>
-<a href="#finalizing">Finalizing</a>
+<a href="#finale-phase">Finale phase</a>
 </li>
 </ul>
 </li>
@@ -244,9 +244,7 @@ external services</li>
 <li>  maybe a little history</li>
 </ul>
 
-<h2 id="glossary-todo">Glossary TODO</h2>
-
-<p><em>TODO to be refined</em></p>
+<h2 id="glossary">Glossary</h2>
 
 <ul>
 <li>  <strong>Action</strong> - building block of execution plans, a Ruby class inherited
@@ -255,14 +253,14 @@ from <code>Dynflow::Action</code>, defines code to be run in each phase.</li>
 <li>  <strong>Input</strong> - A <code>Hash</code> of data coming to the action.</li>
 <li>  <strong>Output</strong> - A <code>Hash</code> of data that the action produces. It&#39;s
 persisted and can be used as input of other actions.</li>
-<li>  <strong>Execution plan</strong> - definition of the workflow: product of the plan phase</li>
+<li>  <strong>Execution plan</strong> - definition of the workflow: product of the plan phase,</li>
 <li>  <strong>Triggering an action</strong> - entering the plan phase, starting with the plan
 method of the action. The execution follows immediately.</li>
-<li>  <strong>Flow</strong> - definition of the run/finalize phase, holding the information
+<li>  <strong>Flow</strong> - definition of the <code>run</code>/<code>finalize</code> phase, holding the information
 about steps that can run concurrently/in sequence. Part of execution plan.</li>
 <li>  <strong>Executor</strong> - service that executes the run and finalize flows based on
 the execution plan. It can run in the same process as the plan phase or in
-different process (using the remote executor)</li>
+different process (using the remote executor).</li>
 <li>  <strong>World</strong> - the universe where the Dynflow runs the code: it holds all
 needed configuration. Usually there&#39;s only one world per Dynflow process,
 besides configuration it also holds <code>Persistence</code>, <code>Logger</code>, <code>Executor</code> and
@@ -350,8 +348,8 @@ After that some finalizing steps can be taken. Actions can use outputs of other 
 as parts of their inputs establishing dependency. Action&#39;s state is serialized between each phase
 and survives machine/executor restarts.</p>
 
-<p>As lightly touched in the previous paragraph there are 3 phases: planning, running, finalizing.
-Planning phase starts by triggering an action.</p>
+<p>As lightly touched in the previous paragraph there are 3 phases: <code>plan</code>, <code>run</code>, <code>finalize</code>.
+Plan phase starts by triggering an action.</p>
 
 <h4 id="input-and-output">Input and Output</h4>
 
@@ -448,9 +446,9 @@ You can see how it&#39;s used to distinguish all the possible results
         <span class="k">end</span><span class="p">)</span>
 <span class="k">end</span>
 </code></pre></div>
-<h4 id="planning">Planning</h4>
+<h4 id="plan-phase">Plan phase</h4>
 
-<p>Planning always uses the thread triggering the action. Planning phase
+<p>Planning always uses the thread triggering the action. Plan phase
 configures action&#39;s input for run phase. It starts by executing
 <code>plan</code> method of the action instance passing in arguments from
 <code>World#trigger method</code></p>
@@ -556,12 +554,12 @@ services.</p>
 
 </div>
 
-<p>Action may access local DB in planning phase,
+<p>Action may access local DB in plan phase,
 see <a href="#database-and-transactions">Database and Transactions</a>.</p>
 
-<h4 id="running">Running</h4>
+<h4 id="run-phase">Run phase</h4>
 
-<p>Actions has a running phase if there is <code>run</code> method implemented.
+<p>Actions has a run phase if there is <code>run</code> method implemented.
 (There may be actions just planning other actions.)</p>
 
 <p>The run method implements the main piece of work done by this action converting
@@ -571,12 +569,12 @@ calls to other systems, etc.
 Local DB should not be accessed in this phase,
 see <a href="#database-and-transactions">Database and Transactions</a></p>
 
-<h4 id="finalizing">Finalizing</h4>
+<h4 id="finale-phase">Finale phase</h4>
 
-<p>Main purpose of finalization phase is to be able access local DB after action finishes
+<p>Main purpose of <code>finalize</code> phase is to be able access local DB after action finishes
 successfully, like: indexing based on new data, updating records as fully created, etc.
 Finalize phase does not modify input or output of the action.
-Action may access local DB in finalizing phase and must be <strong>idempotent</strong>,
+Action may access local DB in <code>finalize</code> phase and must be <strong>idempotent</strong>,
 see <a href="#database-and-transactions">Database and Transactions</a>.</p>
 
 <h3 id="dependencies">Dependencies</h3>
@@ -723,17 +721,17 @@ The usual execution looks as follows, we use an ActiveRecord User as example of 
 <ol>
 <li> Trigger user creation, argument is an unsaved ActiveRecord user object</li>
 <li> Planning: The user is stored in local DB (in the Dynflow hosting application) within the
-planning phase. The record is marked as incomplete.</li>
+<code>plan</code> phase. The record is marked as incomplete.</li>
 <li> Running: Operations needed for the user in external services with (e.g.) REST call.
 The phase finishes when the all the external calls succeeded successfully.</li>
 <li> Finalizing: The record in local DB is marked as done: ready to be
-used. Potentially, saving some data that were retrieved in the running
+used. Potentially, saving some data that were retrieved in the <code>run</code>
 phase back to the local database.</li>
 </ol>
 
-<p>For that reason there are transactions around whole planning and finalizing phase
+<p>For that reason there are transactions around whole <code>plan</code> and <code>finale</code> phase
 (all action&#39;s plan methods are in one transaction).
-If anything goes wrong in the planning phase any change made during planning to local DB is
+If anything goes wrong in the <code>plan</code> phase any change made during planning to local DB is
 reverted. Same holds for finalizing, if anything goes wrong, all changes are reverted. Therefore
 all finalization methods has to be <strong>idempotent</strong>.</p>
 
@@ -748,8 +746,8 @@ if <code>TransactionAdapters::ActiveRecord</code> is used.</p>
 <p>Second outcome of the design is convention when actions should be accessing local Database:</p>
 
 <ul>
-<li>  <strong>allowed</strong> - in planning and finalizing phases</li>
-<li>  <strong>disallowed</strong> - (or at least discouraged) in the running phase</li>
+<li>  <strong>allowed</strong> - in <code>plan</code> and <code>finalize</code> phases</li>
+<li>  <strong>disallowed</strong> - (or at least discouraged) in the <code>run</code> phase</li>
 </ul>
 
 <div class=" alert alert-warning">
@@ -1028,20 +1026,20 @@ resumed to mark it as Skipped.</li>
 
 <h3 id="error-handling">Error handling</h3>
 
-<p>If there is an error risen in <strong>planning</strong> phase, the error is recorded and persisted
+<p>If there is an error risen in <strong><code>plan</code> phase</strong>, the error is recorded and persisted
 and it bubbles up in <code>World#trigger</code> method which was used to trigger the action leading to
 this error. If you compare it to errors raised during <code>run</code> and <code>finalize</code> phase,
 there&#39;s the major difference: Those never bubble up in <code>trigger</code> because they are running
 in executor not in triggering Thread, they are just recorded and persisted.</p>
 
-<p>If there is an error in <strong>running</strong> phase, the execution pauses. You can inspect the error in
+<p>If there is an error in <strong><code>run</code> phase</strong>, the execution pauses. You can inspect the error in
 <a href="#console">console</a>. The error may be intermittent or you may fix the problem manually. After
 that the execution plan can be resumed and it&#39;ll continue by rerunning the failed action and
 continuing with the rest of the actions. During fixing the problem you may also do the steps
 in the actions manually, in that case the failed action can be also marked as skipped. After
 resuming the skipped action is not executed and the execution plan continues with the rest.</p>
 
-<p>If there is an error in <strong>finalizing</strong> phase, whole finalization phase for all the actions is
+<p>If there is an error in <strong><code>finalize</code> phase</strong>, whole <code>finalize</code> phase for all the actions is
 rollbacked and can be rerun when the problem is fixed by resuming.</p>
 
 <p>If you encounter an error during run phase <code>error!</code> or usual <code>raise</code> can be used.</p>
