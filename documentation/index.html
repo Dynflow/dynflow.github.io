@@ -86,7 +86,7 @@ Dynflow
 <a href="#glossary-todo">Glossary TODO</a>
 </li>
 <li>
-<a href="#examples-todo">Examples TODO</a>
+<a href="#examples">Examples</a>
 </li>
 <li>
 <a href="#how-to-use">How to use</a>
@@ -252,7 +252,9 @@ external services</li>
 <li>  <strong>Action</strong> - building block of execution plans, a Ruby class inherited
 from <code>Dynflow::Action</code>, defines code to be run in each phase.</li>
 <li>  <strong>Phase</strong> - Each action has three phases: <code>plan</code>, <code>run</code>, <code>finalize</code>.</li>
-<li>  <strong>Input/Output</strong> - Each action has one. It&#39;s a <code>Hash</code> of data which is persisted.</li>
+<li>  <strong>Input</strong> - A <code>Hash</code> of data coming to the action.</li>
+<li>  <strong>Output</strong> - A <code>Hash</code> of data that the action produces. It&#39;s
+persisted and can be used as input of other actions.</li>
 <li>  <strong>Execution plan</strong> - definition of the workflow: product of the plan phase</li>
 <li>  <strong>Triggering an action</strong> - entering the plan phase, starting with the plan
 method of the action. The execution follows immediately.</li>
@@ -264,10 +266,21 @@ different process (using the remote executor)</li>
 <li>  <strong>World</strong> - the universe where the Dynflow runs the code: it holds all
 needed configuration. Usually there&#39;s only one world per Dynflow process,
 besides configuration it also holds <code>Persistence</code>, <code>Logger</code>, <code>Executor</code> and
-all the other objects necessary for action executing.</li>
+all the other objects necessary for action executing. This concept
+allows us to avoid globally shared state. Also, the worlds can
+talk to each other, which is helpful for production and
+high-availability setups,
+having multiple worlds on different hosts handle the execution of the execution plans.</li>
 </ul>
 
-<h2 id="examples-todo">Examples TODO</h2>
+<h2 id="examples">Examples</h2>
+
+<p>See the
+<a href="https://github.com/Dynflow/dynflow/tree/master/examples">examples directory</a>
+for the code in action. Running those files (except the
+<code>example_helper.rb</code> file) leads to the Dynflow runtime being initialized
+(including the web console where one can explore the features and
+experiment).</p>
 
 <p><em>TODO</em></p>
 
@@ -346,15 +359,19 @@ Planning phase starts by triggering an action.</p>
 need to be serializable to JSON so it should contain only combination of primitive Ruby types
 like: <code>Hash</code>, <code>Array</code>, <code>String</code>, <code>Integer</code>, etc.</p>
 
-<p>The convectional way how to update <code>input</code> and <code>output</code> is using <code>Hash#update</code> method.</p>
-<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="n">output</span><span class="o">.</span><span class="n">update</span> <span class="ss">success</span><span class="p">:</span> <span class="kp">true</span>
+<div class=" alert alert-warning">
+  <p><strong>Warning</strong> </p>
+
+<p>One should avoid using directly</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="nb">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="p">{</span> <span class="ss">key</span><span class="p">:</span> <span class="n">data</span> <span class="p">}</span>
 </code></pre></div>
-<p>The reason is to avoid accidental data deletion. <code>update</code> will leave other keys
-untouched, where</p>
-<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="nb">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="p">{</span> <span class="ss">success</span><span class="p">:</span> <span class="kp">true</span> <span class="p">}</span>
+<p>It might delete other data stored in the output (potentially by middleware and other
+parts of the action). Therefore it&#39;s preferred to use</p>
+<div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="n">output</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="ss">key</span><span class="p">:</span> <span class="n">data</span><span class="p">,</span> <span class="ss">another_key</span><span class="p">:</span> <span class="n">another_data</span><span class="p">)</span>
+<span class="c1"># or for one key</span>
+<span class="n">output</span><span class="o">[</span><span class="ss">:key</span><span class="o">]</span> <span class="o">=</span> <span class="n">data</span>
 </code></pre></div>
-<p>would delete all other data stored in <code>output</code>
-by middlewares or other parts of the action itself.</p>
+</div>
 
 <div class=" alert alert-info">
   <p><strong>Note</strong> </p>
@@ -371,6 +388,9 @@ by middlewares or other parts of the action itself.</p>
   <span class="k">end</span>
 <span class="k">end</span>
 </code></pre></div>
+<p>This might me quite handy especially in combination with
+<a href="#subscriptions">subscriptions</a> functionality.</p>
+
 <p>The format follows <a href="https://github.com/iNecas/apipie-params">apipie-params</a> for more details.
 Validations of input/output could be performed against this description but it&#39;s not turned on
 by default. (It needs to be revisited and updated to be fully functional.)</p>
@@ -379,11 +399,10 @@ by default. (It needs to be revisited and updated to be fully functional.)</p>
 
 <h4 id="triggering">Triggering</h4>
 
-<p>Any action is triggered by calling:</p>
+<p>Triggering the action means starting the plan phase, followed by immediate execution.
+Any action is triggered by calling:</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="n">world_instance</span><span class="o">.</span><span class="n">trigger</span><span class="p">(</span><span class="no">AnAction</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
 </code></pre></div>
-<p>which starts immediately planning the action in the same thread and returns after planning.</p>
-
 <div class=" alert alert-info">
   <p><strong>Note</strong> </p>
 
@@ -431,10 +450,10 @@ You can see how it&#39;s used to distinguish all the possible results
 </code></pre></div>
 <h4 id="planning">Planning</h4>
 
-<p>Planning follows immediately after action is triggered. Planning always uses the tread
-triggering the action. Planning phase configures actions&#39;s input for run phase.
-It starts by executing <code>plan</code> method of the action instance passing in
-arguments from <code>World#trigger method</code></p>
+<p>Planning always uses the thread triggering the action. Planning phase
+configures action&#39;s input for run phase. It starts by executing
+<code>plan</code> method of the action instance passing in arguments from
+<code>World#trigger method</code></p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="n">world_instance</span><span class="o">.</span><span class="n">trigger</span><span class="p">(</span><span class="no">AnAction</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
 <span class="c1"># executes following</span>
 <span class="n">an_action</span><span class="o">.</span><span class="n">plan</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span> <span class="c1"># an_action is AnAction</span>
@@ -452,7 +471,11 @@ arguments from <code>World#trigger method</code></p>
 <p>The above will just plan itself copying input to output in run phase.</p>
 
 <p>In most cases the <code>plan</code> method is overridden to plan self with transformed arguments and/or
-to plan other actions. Let&#39;s look at the argument transformation first:</p>
+to plan other actions. In the Rails application, the arguments of the
+plan phase are often the ActiveRecord objects, that are then
+used to produce the inputs for the actions.</p>
+
+<p>Let&#39;s look at the argument transformation first:</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">AnAction</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
   <span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="n">any_array</span><span class="p">)</span>
     <span class="c1"># pick just numbers</span>
@@ -465,6 +488,26 @@ to plan other actions. Let&#39;s look at the argument transformation first:</p>
   <span class="k">end</span>
 <span class="k">end</span>
 </code></pre></div>
+<div class=" alert alert-info">
+  <p><strong>Note</strong> </p>
+
+<p>It&#39;s considered a good practice to use the just enough data for the
+input for the action to perform the job. That means not too much
+(such as using ActiveRecord&#39;s attributes), as it might have
+performance impact as well as causes issues when changing the
+attributes later.</p>
+
+<p>On the other hand, the input should contain enough data to perform
+the job without the need for reaching to external sources. Therefore,
+instead of passing just the ActiveRecord id and loading the whole
+record again in run phase, just to use some attributes, it&#39;s better to
+use these attributes directly as input of the action.</p>
+
+<p>Following theses rules should lead to the best results, both from
+readability and performance point of view.</p>
+
+</div>
+
 <p>Now let&#39;s see an example with action planning:</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">SumNumbers</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
   <span class="k">def</span> <span class="nf">plan</span><span class="p">(</span><span class="n">numbers</span><span class="p">)</span>
@@ -666,23 +709,26 @@ just for backward compatibility.</p>
 
 <p>Internally dependencies are also modeled with objects representing Sequences and Concurrences,
 which makes it weaker than acyclic-graph so in some cases during the dependency resolution
-it may lead into not the most effective execution plan. Some actions will run in sequence even
-though they could be run concurrently.</p>
+it might not lead into the most effective execution plan. Some actions will run in sequence even
+though they could be run concurrently. This limitation is likely to be
+removed in some of the further releases.</p>
 
 </div>
 
 <h3 id="database-and-transactions">Database and Transactions</h3>
 
 <p>Dynflow was designed to help with orchestration of other services.
-The usual execution looks as follows, we use a yum repository as example of a resource.</p>
+The usual execution looks as follows, we use an ActiveRecord User as example of a resource.</p>
 
 <ol>
-<li> Trigger repository creation, argument is an object describing the repository.</li>
-<li> Planning: The repository is stored in local DB (in the Dynflow hosting application) within the
+<li> Trigger user creation, argument is an unsaved ActiveRecord user object</li>
+<li> Planning: The user is stored in local DB (in the Dynflow hosting application) within the
 planning phase. The record is marked as incomplete.</li>
-<li> Running: The repository creation is initiated in external service with (e.g.) REST call.
-The phase finishes when the repository creation is done.</li>
-<li> Finalizing: The record in local DB is marked as done.</li>
+<li> Running: Operations needed for the user in external services with (e.g.) REST call.
+The phase finishes when the all the external calls succeeded successfully.</li>
+<li> Finalizing: The record in local DB is marked as done: ready to be
+used. Potentially, saving some data that were retrieved in the running
+phase back to the local database.</li>
 </ol>
 
 <p>For that reason there are transactions around whole planning and finalizing phase
@@ -702,8 +748,8 @@ if <code>TransactionAdapters::ActiveRecord</code> is used.</p>
 <p>Second outcome of the design is convention when actions should be accessing local Database:</p>
 
 <ul>
-<li>  <strong>allowed</strong> in planning and finalizing phases</li>
-<li>  <strong>disallowed</strong> in running phase</li>
+<li>  <strong>allowed</strong> - in planning and finalizing phases</li>
+<li>  <strong>disallowed</strong> - (or at least discouraged) in the running phase</li>
 </ul>
 
 <div class=" alert alert-warning">
@@ -985,7 +1031,7 @@ resumed to mark it as Skipped.</li>
 <p>If there is an error risen in <strong>planning</strong> phase, the error is recorded in the Action persistence
 and it bubbles up in <code>World#trigger</code> method which was used to trigger the action leading to
 this error. If you compare it to errors raised during <code>run</code> and <code>finalize</code> phase,
-there&#39;s the major difference: Those are never bubbling up in <code>trigger</code> because they are running
+there&#39;s the major difference: Those never bubble up in <code>trigger</code> because they are running
 in executor not in triggering Thread, they are just stored in Action persistence.</p>
 
 <p>If there is an error in <strong>running</strong> phase, the execution pauses. You can inspect the error in
