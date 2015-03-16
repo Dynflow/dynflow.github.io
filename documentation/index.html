@@ -1026,11 +1026,12 @@ resumed to mark it as Skipped.</li>
 
 <h3 id="error-handling">Error handling</h3>
 
-<p>If there is an error risen in <strong><code>plan</code> phase</strong>, the error is recorded and persisted
-and it bubbles up in <code>World#trigger</code> method which was used to trigger the action leading to
-this error. If you compare it to errors raised during <code>run</code> and <code>finalize</code> phase,
+<p>If there is an error risen in <strong><code>plan</code> phase</strong>, the error is persisted in the Action object 
+for later inspection and it bubbles up in <code>World#trigger</code> method which was used to trigger 
+the action leading to this error. 
+If you compare it to errors raised during <code>run</code> and <code>finalize</code> phase,
 there&#39;s the major difference: Those never bubble up in <code>trigger</code> because they are running
-in executor not in triggering Thread, they are just recorded and persisted.</p>
+in executor not in triggering Thread, they are just persisted in Action object.</p>
 
 <p>If there is an error in <strong><code>run</code> phase</strong>, the execution pauses. You can inspect the error in
 <a href="#console">console</a>. The error may be intermittent or you may fix the problem manually. After
