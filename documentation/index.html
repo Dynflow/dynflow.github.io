@@ -401,7 +401,7 @@ an order. A simple example of such plan action might look like this</p>
 </code></pre></div>
 <p>Note that it does not have to be only other actions that are planned to run.
 In fact it&#39;s very common that the action plan itself, which means it will
-put it&#39;s own <code>run</code> method call in the execution plan. In order to do that
+put its own <code>run</code> method call in the execution plan. In order to do that
 you can use <code>plan_self</code>. This could be used in MyActions::File::Destroy
 used in previous example</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">class</span> <span class="nc">MyActions</span><span class="o">::</span><span class="no">File</span><span class="o">::</span><span class="no">Destroy</span> <span class="o">&lt;</span> <span class="no">Dynflow</span><span class="o">::</span><span class="no">Action</span>
@@ -684,7 +684,7 @@ actions with DSL methods <code>sequence</code> and <code>concurrence</code>. Bot
 and they specify how actions planned inside the block
 (or inner <code>sequence</code> and <code>concurrence</code> blocks) should be executed.</p>
 
-<p>By default <code>plan</code> considers it&#39;s space as inside <code>concurrence</code>. Which means</p>
+<p>By default <code>plan</code> considers its space as inside <code>concurrence</code>. Which means</p>
 <div class="highlight"><pre><code class="language-ruby" data-lang="ruby"><span class="k">def</span> <span class="nf">plan</span>
   <span class="n">first_action</span>  <span class="o">=</span> <span class="n">plan_action</span> <span class="no">AnAction</span>
   <span class="n">second_action</span> <span class="o">=</span> <span class="n">plan_action</span> <span class="no">AnAction</span>
@@ -1230,7 +1230,7 @@ support</a></p>
 
 <p>The world represents the Dynflow&#39;s run-time and it acts as an external
 interface. It holds all the configuration and sub-components needed for the
-Dynflow to perform it&#39;s job.</p>
+Dynflow to perform its job.</p>
 
 <p>The Dynflow worlds is composed of the following sub-components:</p>
 
@@ -1269,7 +1269,7 @@ high-available (in active-active mode).</p>
 <p>There might be multiple client as well as executor worlds in the
 Dynflow infrastructure.</p>
 
-<p>The executor world has still it&#39;s own client dispatcher, so that it
+<p>The executor world has still its own client dispatcher, so that it
 can act as a client for triggering other execution plans (useful in
 <a href="#sub-plans">sub-plans</a> feature).</p>
 
@@ -1308,7 +1308,7 @@ feature for better response times.</p>
 <p><img src='/images/plantuml/c151214d41b23172bca5c47624baed52.png'></p>
 
 <p>1) the client prepares an execution plan, saves it into persistence
-and passes it&#39;s id to the client dispatcher</p>
+and passes its id to the client dispatcher</p>
 
 <p>2) the client dispatcher creates an
 <a href="http://www.rubydoc.info/github/ruby-concurrency/concurrent-ruby/Concurrent/IVar">IVar</a>
