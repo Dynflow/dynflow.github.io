@@ -159,7 +159,7 @@ Dynflow
 <a href="#middleware">Middleware</a>
 </li>
 <li>
-<a href="#subtasks-todo">SubTasks TODO</a>
+<a href="#sub-plans">Sub-plans</a>
 </li>
 </ul>
 </li>
@@ -1202,7 +1202,7 @@ sorted down with
 <a href="http://ruby-doc.org//stdlib-2.0/libdoc/tsort/rdoc/TSort.html">topological sort</a>
 to the chain of middleware execution.</p>
 
-<h3 id="subtasks-todo">SubTasks TODO</h3>
+<h3 id="sub-plans">Sub-plans</h3>
 
 <ul>
 <li>  <em>when to use?</em></li>
@@ -1269,6 +1269,10 @@ high-available (in active-active mode).</p>
 <p>There might be multiple client as well as executor worlds in the
 Dynflow infrastructure.</p>
 
+<p>The executor world has still it&#39;s own client dispatcher, so that it
+can act as a client for triggering other execution plans (useful in
+<a href="#sub-plans">sub-plans</a> feature).</p>
+
 <p><img src='/images/plantuml/c6e9a1751714e51c2c853ef10a47bb5a.png'></p>
 
 <h3 id="single-database-model">Single-database model</h3>
@@ -1303,6 +1307,45 @@ feature for better response times.</p>
 
 <p><img src='/images/plantuml/c151214d41b23172bca5c47624baed52.png'></p>
 
+<p>1) the client prepares an execution plan, saves it into persistence
+and passes it&#39;s id to the client dispatcher</p>
+
+<p>2) the client dispatcher creates an
+<a href="http://www.rubydoc.info/github/ruby-concurrency/concurrent-ruby/Concurrent/IVar">IVar</a>
+that represents the future value of the execution plan after it
+finishes execution. The client can use this value to wait for the
+execution plan to finish or hook other procedures on the finish-time.</p>
+
+<p>3) the client dispatcher creates an envelope (see
+<a href="#connector">connector</a> for more details), containing the request for
+execution, with <code>receiver id</code> set to <code>AnyExecutor</code></p>
+
+<p>4) the connector uses some scheduling algorithm to choose what executor to send the request to and
+replaces the <code>AnyExecutor</code> with it. It sends the envelope the the
+chosen executor.</p>
+
+<p>5) the connector on the executor side receives the envelope and asks
+the executor dispatcher to handle it</p>
+
+<p>6) the executor dispatcher acquires the lock on the execution plan and
+initiates the execution. In the mean-time, it lets the client know
+that the work was accepted (there might be additional logic on the
+client to handle a timeout after the work was not accepted)</p>
+
+<p>7 - 9) the connector layer propagates the <code>Accepted</code> response back
+to client</p>
+
+<p>10) the executor finishes execution</p>
+
+<p>11 - 12) the connector layer propagates the <code>Finished</code> response</p>
+
+<p>13) the client dispatcher resolves the original <code>IVar</code>, so that the
+client is able to find out about the finished execution.</p>
+
+<p>The behavior is the same even in the &quot;one world&quot; scenario: in that
+case this world is participating both on the client and the executor
+side, connected through a direct in-memory connector.</p>
+
 <h3 id="persistence">Persistence</h3>
 
 <p>The persistence making sure that the serialized states of the
@@ -1311,7 +1354,7 @@ execution plan data are stored in it, with the actual state.</p>
 
 <p>Unlike coordinator, the all the persisted data don&#39;t have to be
 available for all the worlds at the same time: every world needs just
-the data that is actively working on. Also, all the data don&#39;t have to
+the data that it is actively working on. Also, all the data don&#39;t have to
 be fully synchronized between worlds (as long as the up-to-date data
 about relevant execution plans are available for the world).</p>
 
@@ -1333,20 +1376,20 @@ about that as long as it&#39;s serializable</li>
 <h4 id="load-balancing">Load-balancing</h4>
 
 <p>The connector is responsible for spreading the load across the
-executor worlds. It&#39;s determined by the <code>AnyExecutor</code> atom at the
+executor worlds. It&#39;s determined by the <code>AnyExecutor</code> value at the
 <code>request id</code> field. The implementation available in the
 current version uses a simple round-robin algorithm for this purpose.</p>
 
 <h3 id="coordinator">Coordinator</h3>
 
-<p>This component is especially in multi-executor setup): Makes sure no
-two executors are executing the same execution plan at the same time
-(the locking feature).Also, it provides the information about the
-worlds available in the system (the worlds register). Unlike the
-persistence, it&#39;s not required to persist the data (could be
+<p>This component (especially important in a multi-executor setup): Makes
+sure no two executors are executing the same execution plan at the
+same time (a.k.a locking). It also provides the information
+about the worlds available in the system (the worlds register). Unlike
+the persistence, it&#39;s not required to persist the data (could be
 recalculated), but it needs to provide a globally shared state.</p>
 
-<p>The main type of objects the coordinator works with is a record, that
+<p>The main type of objects the coordinator works with is a record which
 consists of:</p>
 
 <ul>
@@ -1355,10 +1398,10 @@ consists of:</p>
 <li>data - data in arbitrary format, based on the type</li>
 </ul>
 
-<p>id There is a special type of record called lock, that keeps the owner
+<p>There is a special type of record called <code>lock</code>, that keeps the owner
 information as well. It&#39;s used for keeping information about what
 executor is actively working on what execution plan: the executor is
-not allowed to start on the data unless it has successfully acquired
+not allowed to start executing the unless it has successfully acquired
 a lock for it.</p>
 
 <h3 id="thread-pools-todo">Thread-pools TODO</h3>
